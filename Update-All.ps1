@@ -41,16 +41,29 @@ if (Get-Command choco -ErrorAction SilentlyContinue) {
 }
 
 # ================================
-# Winget update (full coverage, Office excluded)
+# Winget update (Office excluded, version-safe)
 # ================================
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     Write-Host "Updating Winget packages (excluding Microsoft Office)..."
-    winget upgrade --all `
-        --accept-source-agreements `
-        --accept-package-agreements `
-        --include-unknown `
-        --scope machine `
-        --exclude Microsoft.Office
+
+    $packages = winget upgrade --source winget | Select-Object -Skip 1
+
+    foreach ($line in $packages) {
+        if ($line -match "Microsoft\.Office") {
+            Write-Host "Skipping Microsoft Office (handled by C2R)"
+            continue
+        }
+
+        if ($line -match "^\s*(.+?)\s{2,}(\S+)\s{2,}") {
+            $packageId = $matches[2]
+
+            winget upgrade `
+                --id $packageId `
+                --accept-source-agreements `
+                --accept-package-agreements `
+                --scope machine
+        }
+    }
 }
 
 # ================================
@@ -136,11 +149,19 @@ if (Test-Path $GlobalNodeModules) {
 }
 
 # ================================
-# WSL update
+# WSL presence check (safe)
 # ================================
-if (Get-Command wsl -ErrorAction SilentlyContinue) {
-    Write-Host "Updating WSL..."
-    wsl --update
+if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+    Write-Host "Checking WSL status..."
+
+    & wsl.exe --status 2>$null
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "WSL detected — updates handled via Store or Windows Update"
+    }
+    else {
+        Write-Host "WSL present but status check failed — skipping"
+    }
 }
 
 # ================================
