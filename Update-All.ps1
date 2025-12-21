@@ -5,9 +5,7 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
-    Start-Process powershell `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" `
-        -Verb RunAs
+    Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath) -Verb RunAs
     exit
 }
 
@@ -119,10 +117,153 @@ if (Get-Command npm -ErrorAction SilentlyContinue) {
 }
 
 # ================================
+# Scoop (if installed)
+# ================================
+if (Get-Command scoop -ErrorAction SilentlyContinue) {
+    Write-Host "Updating Scoop and Scoop packages..."
+    try {
+        # use wildcard to update all apps; avoid bare '@' token which breaks parsing
+        scoop update *
+        scoop cleanup -f
+    } catch {
+        Write-Host "Scoop update failed: $_" -ForegroundColor Yellow
+    }
+}
+
+# ================================
+# Python packages (pip & pipx)
+# ================================
+Write-Host "Updating Python packages..."
+$pythonCmd = $null
+if (Get-Command python -ErrorAction SilentlyContinue) { $pythonCmd = "python" }
+elseif (Get-Command py -ErrorAction SilentlyContinue) { $pythonCmd = "py" }
+
+if ($pythonCmd) {
+    try {
+        if ($pythonCmd -eq 'py') {
+            & py -3 -m pip install --upgrade pip setuptools wheel 2>$null
+        } else {
+            & python -m pip install --upgrade pip setuptools wheel 2>$null
+        }
+    } catch {
+        Write-Host "Failed to upgrade pip/core tooling: $_" -ForegroundColor Yellow
+    }
+
+    try {
+        if ($pythonCmd -eq 'py') {
+            $outdated = & py -3 -m pip list --outdated --format=freeze 2>$null
+        } else {
+            $outdated = & python -m pip list --outdated --format=freeze 2>$null
+        }
+
+        if ($outdated) {
+            $outdated | ForEach-Object {
+                $name = ($_ -split '==')[0]
+                if ($name) {
+                    Write-Host "Upgrading Python package: $name"
+                    if ($pythonCmd -eq 'py') {
+                        & py -3 -m pip install --upgrade $name 2>$null
+                    } else {
+                        & python -m pip install --upgrade $name 2>$null
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Host "Failed to enumerate or upgrade Python packages: $_" -ForegroundColor Yellow
+    }
+}
+
+if (Get-Command pipx -ErrorAction SilentlyContinue) {
+    Write-Host "Updating pipx-managed packages..."
+    try {
+        pipx upgrade-all 2>$null
+    } catch {
+        Write-Host "pipx upgrade-all failed: $_" -ForegroundColor Yellow
+    }
+}
+
+# ================================
+# Rust (rustup)
+# ================================
+if (Get-Command rustup -ErrorAction SilentlyContinue) {
+    Write-Host "Updating Rust toolchain..."
+    try {
+        rustup update
+    } catch {
+        Write-Host "rustup update failed: $_" -ForegroundColor Yellow
+    }
+}
+
+# ================================
+# Ruby Gems
+# ================================
+if (Get-Command gem -ErrorAction SilentlyContinue) {
+    Write-Host "Updating RubyGems and installed gems..."
+    try {
+        gem update --system --no-document 2>$null
+        gem update --no-document 2>$null
+    } catch {
+        Write-Host "gem update failed: $_" -ForegroundColor Yellow
+    }
+}
+
+# ================================
+# Visual Studio Code extensions
+# ================================
+if (Get-Command code -ErrorAction SilentlyContinue) {
+    Write-Host "Refreshing Visual Studio Code extensions..."
+    try {
+        $extensions = code --list-extensions 2>$null
+        if ($extensions) {
+            $extensions | ForEach-Object {
+                Write-Host "Reinstalling extension: $_"
+                code --install-extension $_ --force 2>$null
+            }
+        }
+    } catch {
+        Write-Host "VSCode extension refresh failed: $_" -ForegroundColor Yellow
+    }
+}
+
+# ================================
+# Docker images cleanup and pull existing images
+# ================================
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    Write-Host 'Checking Docker status...'
+    try {
+        docker info > $null 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host 'Updating Docker images present on the system...'
+            try {
+                $images = docker images --format "{{.Repository}}:{{.Tag}}" | Where-Object { $_ -and ($_ -notmatch '<none>') }
+                foreach ($img in $images) {
+                    try {
+                        Write-Host "Pulling image: $img"
+                        docker pull $img 2>$null
+                    } catch {
+                        Write-Host ('Failed to pull {0}: {1}' -f $img, $_) -ForegroundColor Yellow
+                    }
+                }
+
+                Write-Host 'Pruning unused Docker data...'
+                docker system prune -af 2>$null
+            } catch {
+                Write-Host ('Docker image update failed: {0}' -f $_) -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host 'Docker present but not running or accessible — skipping Docker updates.'
+        }
+    } catch {
+        Write-Host ('Docker status check failed: {0}' -f $_) -ForegroundColor Yellow
+    }
+}
+
+# ================================
 # .NET workloads
 # ================================
 if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    Write-Host "Updating .NET workloads..."
+    Write-Host 'Updating .NET workloads...'
     dotnet workload update
 }
 
@@ -130,7 +271,7 @@ if (Get-Command dotnet -ErrorAction SilentlyContinue) {
 # Clear NuGet cache
 # ================================
 if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    Write-Host "Clearing NuGet cache..."
+    Write-Host 'Clearing NuGet cache...'
     dotnet nuget locals all --clear
 }
 
@@ -144,7 +285,7 @@ if (Test-Path $NuGetPath) {
 # ================================
 $GlobalNodeModules = "$env:APPDATA\npm\node_modules"
 if (Test-Path $GlobalNodeModules) {
-    Write-Host "Clearing global node_modules..."
+    Write-Host 'Clearing global node_modules...'
     Remove-Item "$GlobalNodeModules\*" -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -152,84 +293,56 @@ if (Test-Path $GlobalNodeModules) {
 # WSL presence check (safe)
 # ================================
 if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
-    Write-Host "Checking WSL status..."
-
+    Write-Host 'Checking WSL status...'
     & wsl.exe --status 2>$null
-
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "WSL detected — updates handled via Store or Windows Update"
-    }
-    else {
-        Write-Host "WSL present but status check failed — skipping"
+        Write-Host 'WSL detected — updates handled via Store or Windows Update'
+    } else {
+        Write-Host 'WSL present but status check failed — skipping'
     }
 }
 
 # ================================
 # Reboot detection
 # ================================
-$RebootRequired = Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+$RebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
 
 # ================================
 # Event Log signal (user toast trigger)
 # ================================
-$LogName = "Application"
-$Source  = "SystemUpdater"
+$LogName = 'Application'
+$Source  = 'SystemUpdater'
 $EventId = 1001
 
 if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
     New-EventLog -LogName $LogName -Source $Source
 }
 
-$EventMessage = if ($RebootRequired) {
-    "System updates completed. Reboot required."
-} else {
-    "System updates completed. No reboot required."
-}
+$EventMessage = if ($RebootRequired) { 'System updates completed. Reboot required.' } else { 'System updates completed. No reboot required.' }
 
-Write-EventLog `
-    -LogName $LogName `
-    -Source $Source `
-    -EventId $EventId `
-    -EntryType Information `
-    -Message $EventMessage
+Write-EventLog -LogName $LogName -Source $Source -EventId $EventId -EntryType Information -Message $EventMessage
 
 # ================================
 # Scheduled Task creation
 # ================================
-$TaskName   = "Update System (Choco + Winget + Windows Update)"
-$ScriptPath = "C:\Scripts\Update-All.ps1"
+$TaskName   = 'Update System (Choco + Winget + Windows Update)'
+$ScriptPath = 'C:\Scripts\Update-All.ps1'
 
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-$Action = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
+# Build argument string safely
+$Argument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
+$Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $Argument
 
 $Trigger = New-ScheduledTaskTrigger -Daily -At 01:00AM
+$Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -WakeToRun -Hidden -ExecutionTimeLimit (New-TimeSpan -Hours 4)
 
-$Principal = New-ScheduledTaskPrincipal `
-    -UserId "SYSTEM" `
-    -LogonType ServiceAccount `
-    -RunLevel Highest
+# Register scheduled task and finish
+Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force
 
-$Settings = New-ScheduledTaskSettingsSet `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries `
-    -StartWhenAvailable `
-    -WakeToRun `
-    -Hidden `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 4)
-
-Register-ScheduledTask `
-    -TaskName $TaskName `
-    -Action $Action `
-    -Trigger $Trigger `
-    -Principal $Principal `
-    -Settings $Settings `
-    -Force
-
-Write-Host "Scheduled task '$TaskName' created successfully." -ForegroundColor Green
+Write-Host "Scheduled task $TaskName created successfully." -ForegroundColor Green
 
 exit $global:ExitCode
