@@ -5,7 +5,8 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
-    Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath) -Verb RunAs
+    $currentScript = $MyInvocation.MyCommand.Path
+    Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$currentScript) -Verb RunAs
     exit
 }
 
@@ -84,9 +85,17 @@ Get-WindowsUpdate `
 # Microsoft Store apps
 # ================================
 Write-Host "Updating Microsoft Store apps..."
-Get-CimInstance -Namespace root\cimv2\mdm\dmmap `
-    -ClassName MDM_EnterpriseModernAppManagement_AppManagement01 |
-    Invoke-CimMethod -MethodName UpdateScanMethod
+try {
+    $cim = Get-CimInstance -Namespace root\cimv2\mdm\dmmap -ClassName MDM_EnterpriseModernAppManagement_AppManagement01 -ErrorAction Stop
+    $storeRes = $cim | Invoke-CimMethod -MethodName UpdateScanMethod -ErrorAction Stop
+    if ($storeRes -and $storeRes.ReturnValue -ne 0) {
+        Write-Host "Store update reported non-zero return value: $($storeRes.ReturnValue)" -ForegroundColor Yellow
+    } else {
+        Write-Host "Store update invoked successfully." -ForegroundColor Green
+    }
+} catch {
+    Write-Host "Microsoft Store update failed: $_" -ForegroundColor Yellow
+}
 
 # ================================
 # Windows Defender signatures
@@ -294,11 +303,12 @@ if (Test-Path $GlobalNodeModules) {
 # ================================
 if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
     Write-Host 'Checking WSL status...'
-    & wsl.exe --status 2>$null
+    $wslOut = & wsl.exe --status 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host 'WSL detected — updates handled via Store or Windows Update'
     } else {
-        Write-Host 'WSL present but status check failed — skipping'
+        Write-Host 'WSL present but status check failed — skipping' -ForegroundColor Yellow
+        Write-Host "wsl.exe output: $wslOut"
     }
 }
 
