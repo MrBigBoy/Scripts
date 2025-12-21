@@ -65,6 +65,32 @@ Get-WindowsUpdate `
     -IgnoreReboot
 
 # ================================
+# Microsoft Store apps
+# ================================
+Write-Host "Updating Microsoft Store apps..."
+Get-CimInstance -Namespace root\cimv2\mdm\dmmap `
+    -ClassName MDM_EnterpriseModernAppManagement_AppManagement01 |
+    Invoke-CimMethod -MethodName UpdateScanMethod
+
+# ================================
+# Windows Defender signatures
+# ================================
+if (Get-Command Update-MpSignature -ErrorAction SilentlyContinue) {
+    Write-Host "Updating Windows Defender signatures..."
+    Update-MpSignature
+}
+
+# ================================
+# PowerShell modules (PSGallery)
+# ================================
+Write-Host "Updating PowerShell modules..."
+Get-InstalledModule -ErrorAction SilentlyContinue |
+    Where-Object { $_.Repository -eq "PSGallery" } |
+    ForEach-Object {
+        Update-Module -Name $_.Name -Force -ErrorAction SilentlyContinue
+    }
+
+# ================================
 # Node.js & npm updates
 # ================================
 if (Get-Command npm -ErrorAction SilentlyContinue) {
@@ -72,6 +98,14 @@ if (Get-Command npm -ErrorAction SilentlyContinue) {
     npm install -g npm
     npm update -g
     npm cache clean --force
+}
+
+# ================================
+# .NET workloads
+# ================================
+if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+    Write-Host "Updating .NET workloads..."
+    dotnet workload update
 }
 
 # ================================
@@ -97,16 +131,24 @@ if (Test-Path $GlobalNodeModules) {
 }
 
 # ================================
+# WSL update
+# ================================
+if (Get-Command wsl -ErrorAction SilentlyContinue) {
+    Write-Host "Updating WSL..."
+    wsl --update
+}
+
+# ================================
 # Reboot detection
 # ================================
 $RebootRequired = Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
 
 # ================================
-# Event Log signal (FOR USER TOAST)
+# Event Log signal (user toast trigger)
 # ================================
-$LogName  = "Application"
-$Source   = "SystemUpdater"
-$EventId  = 1001
+$LogName = "Application"
+$Source  = "SystemUpdater"
+$EventId = 1001
 
 if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
     New-EventLog -LogName $LogName -Source $Source
