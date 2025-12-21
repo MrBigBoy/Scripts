@@ -313,6 +313,59 @@ if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
 }
 
 # ================================
+# Visual Studio Installer - Update All (if available)
+# ================================
+$vsInstaller = "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\setup.exe"
+if (Test-Path $vsInstaller) {
+    Write-Host "Running Visual Studio Installer update..."
+    try {
+        # Attempt to invoke installer update; arguments may vary across versions.
+        Start-Process -FilePath $vsInstaller -ArgumentList 'update','--quiet' -Wait -NoNewWindow -ErrorAction Stop
+        Write-Host "Visual Studio Installer update started." -ForegroundColor Green
+    } catch {
+        Write-Host "Visual Studio Installer update failed to start: $_" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Visual Studio Installer not found at '$vsInstaller' - skipping." -ForegroundColor Yellow
+}
+
+# ================================
+# Windows system cleanup
+# ================================
+Write-Host "Running DISM component cleanup (may take a while)..."
+try {
+    Start-Process -FilePath dism.exe -ArgumentList '/Online','/Cleanup-Image','/StartComponentCleanup','/ResetBase' -Wait -NoNewWindow -ErrorAction Stop
+    Write-Host "DISM component cleanup completed." -ForegroundColor Green
+} catch {
+    Write-Host "DISM component cleanup failed: $_" -ForegroundColor Yellow
+}
+
+Write-Host "Configuring Disk Cleanup (CleanMgr) sageset 1 to select all Volume Caches..."
+$vcKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
+try {
+    if (Test-Path $vcKey) {
+        Get-ChildItem -Path $vcKey -ErrorAction SilentlyContinue | ForEach-Object {
+            $path = $_.PsPath
+            # StateFlags0001 corresponds to sageset:1; set value to 2 to mark for cleanup
+            New-ItemProperty -Path $path -Name 'StateFlags0001' -PropertyType DWord -Value 2 -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+        Write-Host "VolumeCaches configured for CleanMgr sageset 1." -ForegroundColor Green
+
+        Write-Host "Running CleanMgr /sagerun:1 (system cleanup using sageset 1)..."
+        try {
+            Start-Process -FilePath cleanmgr.exe -ArgumentList '/sagerun:1' -Wait -NoNewWindow -ErrorAction Stop
+            Write-Host "CleanMgr completed." -ForegroundColor Green
+        } catch {
+            Write-Host "CleanMgr run failed: $_" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "VolumeCaches registry path not found - skipping CleanMgr configuration." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "Failed configuring CleanMgr sageset: $_" -ForegroundColor Yellow
+}
+
+# ================================
 # Reboot detection
 # ================================
 $RebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
