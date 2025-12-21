@@ -11,6 +11,10 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     exit
 }
 
+if ($Host.UI -and $Host.UI.RawUI) {
+    Clear-Host
+}
+
 # ================================
 # Non-interactive / CI-safe mode
 # ================================
@@ -37,15 +41,16 @@ if (Get-Command choco -ErrorAction SilentlyContinue) {
 }
 
 # ================================
-# Winget update (full coverage)
+# Winget update (full coverage, Office excluded)
 # ================================
 if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "Updating Winget packages..."
+    Write-Host "Updating Winget packages (excluding Microsoft Office)..."
     winget upgrade --all `
         --accept-source-agreements `
         --accept-package-agreements `
         --include-unknown `
-        --scope machine
+        --scope machine `
+        --exclude Microsoft.Office
 }
 
 # ================================
