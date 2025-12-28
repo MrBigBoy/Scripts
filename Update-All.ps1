@@ -1,4 +1,14 @@
 # ================================
+# Script parameters
+# ================================
+param(
+    [switch]$WhatIf,
+    [string[]]$SkipModules,
+    [string[]]$RunModules,
+    [string]$LogFile = (Join-Path $env:LOCALAPPDATA 'SystemUpdater\update-log.jsonl')
+)
+
+# ================================
 # Self-elevate to Administrator
 # ================================
 if (-not ([Security.Principal.WindowsPrincipal] `
@@ -14,12 +24,25 @@ if ($Host.UI -and $Host.UI.RawUI) {
     Clear-Host
 }
 
+# Ensure log directory exists
+$logDir = Split-Path -Parent $LogFile
+if (-not (Test-Path $logDir)) { New-Item -Path $logDir -ItemType Directory -Force | Out-Null }
+
 # ================================
 # Non-interactive / CI-safe mode
 # ================================
 $ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Continue'
 $ScriptStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+# ================================
+# Load helpers and notify
+# ================================
+$ModuleDir = Join-Path $PSScriptRoot 'modules'
+$helpersPath = Join-Path $ModuleDir 'Helpers.ps1'
+if (Test-Path $helpersPath) { . $helpersPath }
+$notifyPath = Join-Path $ModuleDir 'Notify.ps1'
+if (Test-Path $notifyPath) { . $notifyPath }
 
 # ================================
 # BurntToast ensure + weekly update
@@ -68,14 +91,10 @@ $LogName = 'Application'
 $Source  = 'SystemUpdater'
 $StartEventId = 1000
 
-$ModuleDir = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'modules'
-$notifyPath = Join-Path $ModuleDir 'Notify.ps1'
-if (Test-Path $notifyPath) { . $notifyPath }
-
 $StartMessage = 'Daglig opdatering startet'
 
 if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
-    Invoke-Notify -Message $StartMessage -EventId $StartEventId -Title 'Systemopdatering'
+    Invoke-Notify -Message $StartMessage -EventId $StartEventId -Title 'Systemopdatering' -LogFile $LogFile
 } else {
     if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) { New-EventLog -LogName $LogName -Source $Source }
     Write-EventLog -LogName $LogName -Source $Source -EventId $StartEventId -EntryType Information -Message $StartMessage
@@ -94,7 +113,6 @@ trap {
 Write-Host "Running as Administrator" -ForegroundColor Green
 
 # Orchestrator: load modular updaters and execute
-$ModuleDir = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'modules'
 $moduleFiles = @(
     'Update-Chocolatey.ps1',
     'Update-Winget.ps1',
@@ -104,24 +122,64 @@ $moduleFiles = @(
     'Update-Docker.ps1'
 )
 
+$invokeMap = @{
+    'Update-Chocolatey.ps1' = 'Invoke-UpdateChocolatey'
+    'Update-Winget.ps1' = 'Invoke-UpdateWinget'
+    'Update-WindowsUpdate.ps1' = 'Invoke-UpdateWindows'
+    'Update-PowerShellModules.ps1' = 'Invoke-UpdatePowerShellModules'
+    'Update-Python.ps1' = 'Invoke-UpdatePython'
+    'Update-Docker.ps1' = 'Invoke-UpdateDocker'
+}
+
+$shortMap = @{
+    'Update-Chocolatey.ps1' = 'Chocolatey'
+    'Update-Winget.ps1' = 'Winget'
+    'Update-WindowsUpdate.ps1' = 'WindowsUpdate'
+    'Update-PowerShellModules.ps1' = 'PowerShellModules'
+    'Update-Python.ps1' = 'Python'
+    'Update-Docker.ps1' = 'Docker'
+}
+
+$results = @()
 foreach ($f in $moduleFiles) {
     $path = Join-Path $ModuleDir $f
+    $shortName = $shortMap[$f]
+
+    if ($RunModules -and ($RunModules -ne $null) -and -not ($RunModules -contains $shortName)) {
+        Write-Host "Skipping $shortName because not in RunModules list" -ForegroundColor Yellow
+        continue
+    }
+    if ($SkipModules -and ($SkipModules -contains $shortName)) {
+        Write-Host "Skipping $shortName as requested" -ForegroundColor Yellow
+        continue
+    }
+
     if (Test-Path $path) {
         Write-Host "Loading module: $f"
         . $path
+        $invoke = $invokeMap[$f]
+        if (Get-Command $invoke -ErrorAction SilentlyContinue) {
+            try {
+                $res = & $invoke -WhatIf:$WhatIf -LogFile $LogFile
+                $results += $res
+            } catch {
+                $errObj = [PSCustomObject]@{ Module = $shortName; Success = $false; Message = 'Invocation failed'; Errors = @($_.Exception.Message); Duration = 0 }
+                $results += $errObj
+            }
+        } else {
+            Write-Host "Function $invoke not found in $f" -ForegroundColor Yellow
+        }
     } else {
         Write-Host "Module not found: $path" -ForegroundColor Yellow
     }
 }
 
-# Execute modules if functions are present
-$results = @{}
-if (Get-Command Invoke-UpdateChocolatey -ErrorAction SilentlyContinue) { $results.Choco = Invoke-UpdateChocolatey }
-if (Get-Command Invoke-UpdateWinget -ErrorAction SilentlyContinue) { $results.Winget = Invoke-UpdateWinget }
-if (Get-Command Invoke-UpdateWindows -ErrorAction SilentlyContinue) { $results.Windows = Invoke-UpdateWindows }
-if (Get-Command Invoke-UpdatePowerShellModules -ErrorAction SilentlyContinue) { $results.PowerShellModules = Invoke-UpdatePowerShellModules }
-if (Get-Command Invoke-UpdatePython -ErrorAction SilentlyContinue) { $results.Python = Invoke-UpdatePython }
-if (Get-Command Invoke-UpdateDocker -ErrorAction SilentlyContinue) { $results.Docker = Invoke-UpdateDocker }
+# Write orchestrator summary to log
+$summary = [PSCustomObject]@{
+    Timestamp = (Get-Date).ToString('o')
+    Results = $results
+}
+if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) { Write-LogJsonLine -Object $summary -LogFile $LogFile }
 
 Write-Host "Module execution results:"; $results | Format-Table -AutoSize
 
@@ -136,9 +194,15 @@ if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
     New-EventLog -LogName $LogName -Source $Source
 }
 
+$RebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
 $EventMessage = if ($RebootRequired) { 'System updates completed. Reboot required.' } else { 'System updates completed. No reboot required.' }
 
-Write-EventLog -LogName $LogName -Source $Source -EventId $EventId -EntryType Information -Message $EventMessage
+if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
+    Invoke-Notify -Message $EventMessage -EventId $EventId -Title 'Systemopdatering' -LogFile $LogFile
+} else {
+    Write-EventLog -LogName $LogName -Source $Source -EventId $EventId -EntryType Information -Message $EventMessage
+    if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $EventMessage }
+}
 
 # ================================
 # Scheduled Task creation
@@ -176,7 +240,7 @@ $EndEventId = 1002
 $EndMessage = "Daglig opdatering færdig (tid: $DurationText)"
 
 if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
-    Invoke-Notify -Message $EndMessage -EventId $EndEventId -Title 'Systemopdatering'
+    Invoke-Notify -Message $EndMessage -EventId $EndEventId -Title 'Systemopdatering' -LogFile $LogFile
 } else {
     Write-EventLog -LogName $LogName -Source $Source -EventId $EndEventId -EntryType Information -Message $EndMessage
     if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $EndMessage }
