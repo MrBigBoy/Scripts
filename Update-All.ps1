@@ -19,6 +19,70 @@ if ($Host.UI -and $Host.UI.RawUI) {
 # ================================
 $ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Continue'
+$ScriptStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+# ================================
+# BurntToast ensure + weekly update
+# ================================
+$ModuleName      = 'BurntToast'
+$CheckInterval   = 7
+$StateDir        = Join-Path $env:LOCALAPPDATA 'SystemUpdater'
+$LastCheckFile   = Join-Path $StateDir 'BurntToast.lastcheck'
+
+if (-not (Test-Path $StateDir)) {
+    New-Item -Path $StateDir -ItemType Directory -Force | Out-Null
+}
+
+$DoUpdateCheck = -not (Test-Path $LastCheckFile) -or
+    ((Get-Date) - (Get-Item $LastCheckFile).LastWriteTime).Days -ge $CheckInterval
+
+try {
+    $Installed = Get-Module -ListAvailable -Name $ModuleName |
+                 Sort-Object Version -Descending |
+                 Select-Object -First 1
+
+    if ($DoUpdateCheck) {
+        $Latest = Find-Module -Name $ModuleName -ErrorAction Stop
+
+        if (-not $Installed) {
+            Install-Module -Name $ModuleName -Scope CurrentUser -Force -ErrorAction Stop
+        }
+        elseif ($Installed.Version -lt $Latest.Version) {
+            Update-Module -Name $ModuleName -Scope CurrentUser -Force -ErrorAction Stop
+        }
+
+        New-Item -Path $LastCheckFile -ItemType File -Force | Out-Null
+    }
+
+    Import-Module $ModuleName -Force -ErrorAction Stop
+    $ToastAvailable = $true
+}
+catch {
+    $ToastAvailable = $false
+}
+
+# ================================
+# Start notification
+# ================================
+$LogName = 'Application'
+$Source  = 'SystemUpdater'
+$StartEventId = 1000
+
+if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
+    New-EventLog -LogName $LogName -Source $Source
+}
+
+$StartMessage = 'Daglig opdatering startet'
+
+Write-EventLog -LogName $LogName `
+               -Source $Source `
+               -EventId $StartEventId `
+               -EntryType Information `
+               -Message $StartMessage
+
+if ($ToastAvailable) {
+    New-BurntToastNotification -Text 'Systemopdatering', $StartMessage
+}
 
 # ================================
 # Exit code handling
@@ -356,18 +420,52 @@ if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
 # ================================
 # Visual Studio Installer - Update All (if available)
 # ================================
-$vsInstaller = "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\setup.exe"
-if (Test-Path $vsInstaller) {
-    Write-Host "Running Visual Studio Installer update..."
+$vsCandidates = @()
+$installerFolders = @(
+    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer",
+    "${env:ProgramFiles}\Microsoft Visual Studio\Installer"
+)
+foreach ($folder in $installerFolders) {
+    if (Test-Path $folder) {
+        try {
+            $exes = Get-ChildItem -Path $folder -Filter *.exe -File -ErrorAction SilentlyContinue
+            foreach ($e in $exes) {
+                $name = $e.Name.ToLower()
+                if ($name -match 'setup\.exe' -or $name -match 'vs[_-]?installer' -or $name -match '^installer') {
+                    $vsCandidates += $e.FullName
+                }
+            }
+        } catch {
+            # ignore
+        }
+    }
+}
+
+# Fallback: look for known names anywhere under the Installer folder roots
+if ($vsCandidates.Count -eq 0) {
+    foreach ($folder in $installerFolders) {
+        if (Test-Path $folder) {
+            try {
+                $found = Get-ChildItem -Path $folder -Recurse -Filter 'setup.exe','vs_installer*.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($found) { $vsCandidates += $found.FullName }
+            } catch {
+                # ignore
+            }
+        }
+    }
+}
+
+if ($vsCandidates.Count -gt 0) {
+    $vsInstaller = $vsCandidates[0]
+    Write-Host "Running Visual Studio Installer update using: $vsInstaller"
     try {
-        # Attempt to invoke installer update; arguments may vary across versions.
         Start-Process -FilePath $vsInstaller -ArgumentList 'update','--quiet' -Wait -NoNewWindow -ErrorAction Stop
         Write-Host "Visual Studio Installer update started." -ForegroundColor Green
     } catch {
         Write-Host "Visual Studio Installer update failed to start: $_" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "Visual Studio Installer not found at '$vsInstaller' - skipping." -ForegroundColor Yellow
+    Write-Host "Visual Studio Installer not found in standard locations - skipping." -ForegroundColor Yellow
 }
 
 # ================================
@@ -448,5 +546,27 @@ $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force
 
 Write-Host "Scheduled task $TaskName created successfully." -ForegroundColor Green
+
+$ScriptStopwatch.Stop()
+
+$Elapsed = $ScriptStopwatch.Elapsed
+$DurationText = '{0:hh\:mm\:ss}' -f $Elapsed
+
+
+# ================================
+# End notification
+# ================================
+$EndEventId = 1002
+$EndMessage = "Daglig opdatering færdig (tid: $DurationText)"
+
+Write-EventLog -LogName $LogName `
+               -Source $Source `
+               -EventId $EndEventId `
+               -EntryType Information `
+               -Message $EndMessage
+
+if ($ToastAvailable) {
+    New-BurntToastNotification -Text 'Systemopdatering', $EndMessage
+}
 
 exit $global:ExitCode
