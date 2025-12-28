@@ -206,15 +206,28 @@ foreach ($f in $moduleFiles) {
             try {
                 $res = & $invoke -WhatIf:$WhatIf -LogFile $LogFile
                 $results += $res
+                # Determine display status and color
+                $statusText = 'Failed'
+                $color = 'Red'
                 if ($res -and $res.Success) {
-                    Write-Host "Checked: $shortName - Success" -ForegroundColor Green
+                    $statusText = 'Success'
+                    $color = 'Green'
                 } else {
-                    Write-Host "Checked: $shortName - Failed" -ForegroundColor Yellow
+                    $msg = if ($res -and $res.Message) { $res.Message } else { '' }
+                    $out = if ($res -and $res.Output) { $res.Output } else { '' }
+                    if ($msg -match '(?i)(not installed|not found|no supported updater|no updater|not present|no wsl distros|no wsl distros found|not managed|installed but not managed)' -or $out -match '(?i)(No installed package found|not found)') {
+                        $statusText = 'Not installed'
+                        $color = 'Yellow'
+                    } else {
+                        $statusText = 'Failed'
+                        $color = 'Red'
+                    }
                 }
+                Write-Host "Checked: $shortName - $statusText" -ForegroundColor $color
             } catch {
                 $errObj = [PSCustomObject]@{ Module = $shortName; Success = $false; Message = 'Invocation failed'; Errors = @($_.Exception.Message); Duration = 0 }
                 $results += $errObj
-                Write-Host "Checked: $shortName - Invocation failed" -ForegroundColor Yellow
+                Write-Host "Checked: $shortName - Invocation failed" -ForegroundColor Red
             }
         } else {
             Write-Host "Function for $shortName not found in $f" -ForegroundColor Yellow
