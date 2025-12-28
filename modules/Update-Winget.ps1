@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Updates packages via winget (excluding Microsoft Office by default).
+
+.DESCRIPTION
+`Invoke-UpdateWinget` scans available upgrades from `winget upgrade` and attempts upgrades while skipping Microsoft Office packages.
+
+.PARAMETER WhatIf
+If specified, the function will not perform changes.
+
+.PARAMETER LogFile
+Optional JSONL log file path to append structured results.
+
+.EXAMPLE
+Invoke-UpdateWinget -WhatIf -LogFile C:\Temp\updates.jsonl
+#>
 function Invoke-UpdateWinget {
     [CmdletBinding()]
     param(

@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Updates Python packages (pip, pipx-managed packages).
+
+.DESCRIPTION
+`Invoke-UpdatePython` upgrades pip tooling and enumerates outdated packages to upgrade. Also calls `pipx upgrade-all` when pipx is present.
+
+.PARAMETER WhatIf
+If specified, the function will not perform changes.
+
+.PARAMETER LogFile
+Optional JSONL log file path to append structured results.
+
+.EXAMPLE
+Invoke-UpdatePython -WhatIf -LogFile C:\Temp\updates.jsonl
+#>
 function Invoke-UpdatePython {
     [CmdletBinding()]
     param(

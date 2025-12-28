@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Runs Windows Update via PSWindowsUpdate module.
+
+.DESCRIPTION
+`Invoke-UpdateWindows` ensures PSWindowsUpdate is available, imports it, and invokes `Get-WindowsUpdate` to install Microsoft updates.
+
+.PARAMETER WhatIf
+If specified, the function will not perform changes.
+
+.PARAMETER LogFile
+Optional JSONL log file path to append structured results.
+
+.EXAMPLE
+Invoke-UpdateWindows -WhatIf -LogFile C:\Temp\updates.jsonl
+#>
 function Invoke-UpdateWindows {
     [CmdletBinding()]
     param(

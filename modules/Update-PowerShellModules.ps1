@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Updates installed PowerShell modules from PSGallery.
+
+.DESCRIPTION
+`Invoke-UpdatePowerShellModules` enumerates modules installed from PSGallery and attempts to update them. If modules are locked/in use, the orchestrator may schedule an elevated helper to retry updates after exit.
+
+.PARAMETER WhatIf
+If specified, the function will not perform changes.
+
+.PARAMETER LogFile
+Optional JSONL log file path to append structured results.
+
+.EXAMPLE
+Invoke-UpdatePowerShellModules -WhatIf -LogFile C:\Temp\updates.jsonl
+#>
 function Invoke-UpdatePowerShellModules {
     [CmdletBinding()]
     param(

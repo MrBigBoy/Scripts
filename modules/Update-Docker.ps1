@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Refreshes and pulls Docker images present on the host and prunes unused data.
+
+.DESCRIPTION
+`Invoke-UpdateDocker` checks Docker daemon status, attempts to `docker pull` for existing images and prunes unused resources.
+
+.PARAMETER WhatIf
+If specified, the function will not perform changes.
+
+.PARAMETER LogFile
+Optional JSONL log file path to append structured results.
+
+.EXAMPLE
+Invoke-UpdateDocker -WhatIf -LogFile C:\Temp\updates.jsonl
+#>
 function Invoke-UpdateDocker {
     [CmdletBinding()]
     param(

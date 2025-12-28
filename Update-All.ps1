@@ -113,13 +113,22 @@ trap {
 Write-Host "Running as Administrator" -ForegroundColor Green
 
 # Orchestrator: load modular updaters and execute
+# Add new modules to the list
 $moduleFiles = @(
     'Update-Chocolatey.ps1',
     'Update-Winget.ps1',
     'Update-WindowsUpdate.ps1',
     'Update-PowerShellModules.ps1',
     'Update-Python.ps1',
-    'Update-Docker.ps1'
+    'Update-Docker.ps1',
+    'Update-Scoop.ps1',
+    'Update-Npm.ps1',
+    'Update-Vcpkg.ps1',
+    'Update-Composer.ps1',
+    'Update-WSL.ps1',
+    'Update-Conda.ps1',
+    'Update-KubeHelm.ps1',
+    'Update-CloudCLI.ps1'
 )
 
 $invokeMap = @{
@@ -129,6 +138,14 @@ $invokeMap = @{
     'Update-PowerShellModules.ps1' = 'Invoke-UpdatePowerShellModules'
     'Update-Python.ps1' = 'Invoke-UpdatePython'
     'Update-Docker.ps1' = 'Invoke-UpdateDocker'
+    'Update-Scoop.ps1' = 'Invoke-UpdateScoop'
+    'Update-Npm.ps1' = 'Invoke-UpdateNpm'
+    'Update-Vcpkg.ps1' = 'Invoke-UpdateVcpkg'
+    'Update-Composer.ps1' = 'Invoke-UpdateComposer'
+    'Update-WSL.ps1' = 'Invoke-UpdateWSL'
+    'Update-Conda.ps1' = 'Invoke-UpdateConda'
+    'Update-KubeHelm.ps1' = 'Invoke-UpdateKubeHelm'
+    'Update-CloudCLI.ps1' = 'Invoke-UpdateCloudCLI'
 }
 
 $shortMap = @{
@@ -138,6 +155,14 @@ $shortMap = @{
     'Update-PowerShellModules.ps1' = 'PowerShellModules'
     'Update-Python.ps1' = 'Python'
     'Update-Docker.ps1' = 'Docker'
+    'Update-Scoop.ps1' = 'Scoop'
+    'Update-Npm.ps1' = 'Npm'
+    'Update-Vcpkg.ps1' = 'Vcpkg'
+    'Update-Composer.ps1' = 'Composer'
+    'Update-WSL.ps1' = 'WSL'
+    'Update-Conda.ps1' = 'Conda'
+    'Update-KubeHelm.ps1' = 'KubeHelm'
+    'Update-CloudCLI.ps1' = 'CloudCLI'
 }
 
 $results = @()

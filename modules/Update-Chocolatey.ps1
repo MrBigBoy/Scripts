@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+Updates Chocolatey packages.
+
+.DESCRIPTION
+`Invoke-UpdateChocolatey` updates all Chocolatey packages using `choco upgrade all`.
+
+.PARAMETER WhatIf
+If specified, the function will not perform changes and will return a simulated result.
+
+.PARAMETER LogFile
+Optional JSONL log file path to append structured results.
+
+.EXAMPLE
+Invoke-UpdateChocolatey -WhatIf -LogFile C:\Temp\updates.jsonl
+#>
 function Invoke-UpdateChocolatey {
     [CmdletBinding()]
     param(
