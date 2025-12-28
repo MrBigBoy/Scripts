@@ -68,20 +68,18 @@ $LogName = 'Application'
 $Source  = 'SystemUpdater'
 $StartEventId = 1000
 
-if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
-    New-EventLog -LogName $LogName -Source $Source
-}
+$ModuleDir = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'modules'
+$notifyPath = Join-Path $ModuleDir 'Notify.ps1'
+if (Test-Path $notifyPath) { . $notifyPath }
 
 $StartMessage = 'Daglig opdatering startet'
 
-Write-EventLog -LogName $LogName `
-               -Source $Source `
-               -EventId $StartEventId `
-               -EntryType Information `
-               -Message $StartMessage
-
-if ($ToastAvailable) {
-    New-BurntToastNotification -Text 'Systemopdatering', $StartMessage
+if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
+    Invoke-Notify -Message $StartMessage -EventId $StartEventId -Title 'Systemopdatering'
+} else {
+    if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) { New-EventLog -LogName $LogName -Source $Source }
+    Write-EventLog -LogName $LogName -Source $Source -EventId $StartEventId -EntryType Information -Message $StartMessage
+    if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $StartMessage }
 }
 
 # ================================
@@ -95,419 +93,37 @@ trap {
 
 Write-Host "Running as Administrator" -ForegroundColor Green
 
-# ================================
-# Chocolatey update (fail-safe)
-# ================================
-if (Get-Command choco -ErrorAction SilentlyContinue) {
-    Write-Host "Updating Chocolatey packages..."
-    choco upgrade all -y --ignore-checksums --fail-on-unfound=false
-}
-
-# ================================
-# Winget update (Office excluded, version-safe)
-# ================================
-if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "Updating Winget packages (excluding Microsoft Office)..."
-
-    $packages = winget upgrade --source winget | Select-Object -Skip 1
-
-    foreach ($line in $packages) {
-        if ($line -match "Microsoft\.Office") {
-            Write-Host "Skipping Microsoft Office (handled by C2R)"
-            continue
-        }
-
-        if ($line -match "^\s*(.+?)\s{2,}(\S+)\s{2,}") {
-            $packageId = $matches[2]
-
-            winget upgrade `
-                --id $packageId `
-                --accept-source-agreements `
-                --accept-package-agreements `
-                --scope machine
-        }
-    }
-}
-
-# ================================
-# Microsoft Update (Windows + MS)
-# ================================
-Write-Host "Running Microsoft Update..."
-
-if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-    Install-Module PSWindowsUpdate -Force -Confirm:$false
-}
-
-Import-Module PSWindowsUpdate
-Get-WindowsUpdate `
-    -MicrosoftUpdate `
-    -AcceptAll `
-    -Install `
-    -IgnoreReboot
-
-# ================================
-# Microsoft Store apps
-# ================================
-Write-Host "Updating Microsoft Store apps..."
-try {
-    $cim = Get-CimInstance -Namespace root\cimv2\mdm\dmmap -ClassName MDM_EnterpriseModernAppManagement_AppManagement01 -ErrorAction Stop
-    $storeRes = $cim | Invoke-CimMethod -MethodName UpdateScanMethod -ErrorAction Stop
-    if ($storeRes -and $storeRes.ReturnValue -ne 0) {
-        Write-Host "Store update reported non-zero return value: $($storeRes.ReturnValue)" -ForegroundColor Yellow
-    } else {
-        Write-Host "Store update invoked successfully." -ForegroundColor Green
-    }
-} catch {
-    Write-Host "Microsoft Store update failed: $_" -ForegroundColor Yellow
-}
-
-# ================================
-# Windows Defender signatures
-# ================================
-if (Get-Command Update-MpSignature -ErrorAction SilentlyContinue) {
-    Write-Host "Updating Windows Defender signatures..."
-    Update-MpSignature
-}
-
-# ================================
-# PowerShell modules (PSGallery)
-# ================================
-Write-Host "Updating PowerShell modules..."
-$failedModules = @()
-Get-InstalledModule -ErrorAction SilentlyContinue |
-    Where-Object { $_.Repository -eq 'PSGallery' } |
-    ForEach-Object {
-        $name = $_.Name
-        try {
-            Update-Module -Name $name -Force -ErrorAction Stop
-            Write-Host "Updated PowerShell module: $name"
-        } catch {
-            $msg = $_.Exception.Message
-            Write-Host ("Failed to update module {0}: {1}" -f $name, $msg) -ForegroundColor Yellow
-            if ($msg -match 'in use|currently in use|being used') {
-                $failedModules += $name
-            }
-        }
-    }
-
-if ($failedModules.Count -gt 0) {
-    Write-Host "Some modules are in use and could not be updated now: $($failedModules -join ', ')" -ForegroundColor Yellow
-    try {
-        $pidToWait = $PID
-        $scriptToRerun = $MyInvocation.MyCommand.Path
-        $psHelperPath = Join-Path $env:TEMP "psmodules_update_and_rerun.ps1"
-
-        # Build helper script lines
-        $helperLines = @()
-        $helperLines += 'param($ParentPid, $MainScript)'
-        $helperLines += 'while (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }'
-        foreach ($mod in $failedModules) {
-            $escaped = $mod -replace "'","''"
-            $helperLines += 'try { Update-Module -Name ''' + $escaped + ''' -Force -ErrorAction Stop; Write-Host ''Updated module: ' + $escaped + ''' } catch { Write-Host (''Failed updating ' + $escaped + ': '' + $_.Exception.Message) -ForegroundColor Yellow }'
-        }
-        # Relaunch the main script using the $MainScript parameter inside the helper
-        $helperLines += "Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',`$MainScript)"
-
-        Set-Content -Path $psHelperPath -Value $helperLines -Encoding ASCII -Force
-
-        Write-Host "Launching elevated PowerShell to update modules after this script exits..." -ForegroundColor Yellow
-        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$psHelperPath,$pidToWait,$scriptToRerun) -Verb RunAs -WindowStyle Hidden
-
-        Write-Host "Exiting current PowerShell to allow elevated updater to run..." -ForegroundColor Yellow
-        exit 0
-    } catch {
-        Write-Host "Failed to prepare elevated module updater: $_" -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# Node.js & npm updates
-# ================================
-if (Get-Command npm -ErrorAction SilentlyContinue) {
-    Write-Host "Updating npm..."
-    npm install -g npm
-    npm update -g
-    npm cache clean --force
-}
-
-# ================================
-# Scoop (if installed)
-# ================================
-if (Get-Command scoop -ErrorAction SilentlyContinue) {
-    Write-Host "Updating Scoop and Scoop packages..."
-    try {
-        # use wildcard to update all apps; avoid bare '@' token which breaks parsing
-        scoop update *
-        scoop cleanup -f
-    } catch {
-        Write-Host "Scoop update failed: $_" -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# Python packages (pip & pipx)
-# ================================
-Write-Host "Updating Python packages..."
-$pythonCmd = $null
-if (Get-Command python -ErrorAction SilentlyContinue) { $pythonCmd = "python" }
-elseif (Get-Command py -ErrorAction SilentlyContinue) { $pythonCmd = "py" }
-
-if ($pythonCmd) {
-    try {
-        if ($pythonCmd -eq 'py') {
-            & py -3 -m pip install --upgrade pip setuptools wheel 2>$null
-        } else {
-            & python -m pip install --upgrade pip setuptools wheel 2>$null
-        }
-    } catch {
-        Write-Host "Failed to upgrade pip/core tooling: $_" -ForegroundColor Yellow
-    }
-
-    try {
-        if ($pythonCmd -eq 'py') {
-            $outdated = & py -3 -m pip list --outdated --format=freeze 2>$null
-        } else {
-            $outdated = & python -m pip list --outdated --format=freeze 2>$null
-        }
-
-        if ($outdated) {
-            $outdated | ForEach-Object {
-                $name = ($_ -split '==')[0]
-                if ($name) {
-                    Write-Host "Upgrading Python package: $name"
-                    if ($pythonCmd -eq 'py') {
-                        & py -3 -m pip install --upgrade $name 2>$null
-                    } else {
-                        & python -m pip install --upgrade $name 2>$null
-                    }
-                }
-            }
-        }
-    } catch {
-        Write-Host "Failed to enumerate or upgrade Python packages: $_" -ForegroundColor Yellow
-    }
-}
-
-if (Get-Command pipx -ErrorAction SilentlyContinue) {
-    Write-Host "Updating pipx-managed packages..."
-    try {
-        pipx upgrade-all 2>$null
-    } catch {
-        Write-Host "pipx upgrade-all failed: $_" -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# Rust (rustup)
-# ================================
-if (Get-Command rustup -ErrorAction SilentlyContinue) {
-    Write-Host "Updating Rust toolchain..."
-    try {
-        rustup update
-    } catch {
-        Write-Host "rustup update failed: $_" -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# Ruby Gems
-# ================================
-if (Get-Command gem -ErrorAction SilentlyContinue) {
-    Write-Host "Updating RubyGems and installed gems..."
-    try {
-        gem update --system --no-document 2>$null
-        gem update --no-document 2>$null
-    } catch {
-        Write-Host "gem update failed: $_" -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# Visual Studio Code extensions
-# ================================
-if (Get-Command code -ErrorAction SilentlyContinue) {
-    Write-Host "Refreshing Visual Studio Code extensions..."
-    try {
-        $extensions = code --list-extensions 2>$null
-        if ($extensions) {
-            $extensions | ForEach-Object {
-                Write-Host "Reinstalling extension: $_"
-                code --install-extension $_ --force 2>$null
-            }
-        }
-    } catch {
-        Write-Host "VSCode extension refresh failed: $_" -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# Docker images cleanup and pull existing images
-# ================================
-if (Get-Command docker -ErrorAction SilentlyContinue) {
-    Write-Host 'Checking Docker status...'
-    try {
-        docker info > $null 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host 'Updating Docker images present on the system...'
-            try {
-                $images = docker images --format "{{.Repository}}:{{.Tag}}" | Where-Object { $_ -and ($_ -notmatch '<none>') }
-                foreach ($img in $images) {
-                    try {
-                        Write-Host "Pulling image: $img"
-                        docker pull $img 2>$null
-                    } catch {
-                        Write-Host ('Failed to pull {0}: {1}' -f $img, $_) -ForegroundColor Yellow
-                    }
-                }
-
-                Write-Host 'Pruning unused Docker data...'
-                docker system prune -af 2>$null
-            } catch {
-                Write-Host ('Docker image update failed: {0}' -f $_) -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host 'Docker present but not running or accessible — skipping Docker updates.'
-        }
-    } catch {
-        Write-Host ('Docker status check failed: {0}' -f $_) -ForegroundColor Yellow
-    }
-}
-
-# ================================
-# .NET workloads
-# ================================
-if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    Write-Host 'Updating .NET workloads...'
-    dotnet workload update
-}
-
-# ================================
-# Clear NuGet cache
-# ================================
-if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    Write-Host 'Clearing NuGet cache...'
-    dotnet nuget locals all --clear
-}
-
-$NuGetPath = "$env:USERPROFILE\.nuget\packages"
-if (Test-Path $NuGetPath) {
-    Remove-Item "$NuGetPath\*" -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# ================================
-# Clear global node_modules
-# ================================
-$GlobalNodeModules = "$env:APPDATA\npm\node_modules"
-if (Test-Path $GlobalNodeModules) {
-    Write-Host 'Clearing global node_modules...'
-    Remove-Item "$GlobalNodeModules\*" -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# ================================
-# WSL presence check (safe)
-# ================================
-if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
-    Write-Host 'Checking WSL status...'
-    $wslOut = & wsl.exe --status 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host 'WSL detected — updates handled via Store or Windows Update'
-    } else {
-        Write-Host 'WSL present but status check failed — skipping' -ForegroundColor Yellow
-        Write-Host "wsl.exe output: $wslOut"
-    }
-}
-
-# ================================
-# Visual Studio Installer - Update All (if available)
-# ================================
-$vsCandidates = @()
-$installerFolders = @(
-    "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer",
-    "${env:ProgramFiles}\Microsoft Visual Studio\Installer"
+# Orchestrator: load modular updaters and execute
+$ModuleDir = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'modules'
+$moduleFiles = @(
+    'Update-Chocolatey.ps1',
+    'Update-Winget.ps1',
+    'Update-WindowsUpdate.ps1',
+    'Update-PowerShellModules.ps1',
+    'Update-Python.ps1',
+    'Update-Docker.ps1'
 )
-foreach ($folder in $installerFolders) {
-    if (Test-Path $folder) {
-        try {
-            $exes = Get-ChildItem -Path $folder -Filter *.exe -File -ErrorAction SilentlyContinue
-            foreach ($e in $exes) {
-                $name = $e.Name.ToLower()
-                if ($name -match 'setup\.exe' -or $name -match 'vs[_-]?installer' -or $name -match '^installer') {
-                    $vsCandidates += $e.FullName
-                }
-            }
-        } catch {
-            # ignore
-        }
-    }
-}
 
-# Fallback: look for known names anywhere under the Installer folder roots
-if ($vsCandidates.Count -eq 0) {
-    foreach ($folder in $installerFolders) {
-        if (Test-Path $folder) {
-            try {
-                $found = Get-ChildItem -Path $folder -Recurse -Filter 'setup.exe','vs_installer*.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($found) { $vsCandidates += $found.FullName }
-            } catch {
-                # ignore
-            }
-        }
-    }
-}
-
-if ($vsCandidates.Count -gt 0) {
-    $vsInstaller = $vsCandidates[0]
-    Write-Host "Running Visual Studio Installer update using: $vsInstaller"
-    try {
-        Start-Process -FilePath $vsInstaller -ArgumentList 'update','--quiet' -Wait -NoNewWindow -ErrorAction Stop
-        Write-Host "Visual Studio Installer update started." -ForegroundColor Green
-    } catch {
-        Write-Host "Visual Studio Installer update failed to start: $_" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "Visual Studio Installer not found in standard locations - skipping." -ForegroundColor Yellow
-}
-
-# ================================
-# Windows system cleanup
-# ================================
-Write-Host "Running DISM component cleanup (may take a while)..."
-try {
-    Start-Process -FilePath dism.exe -ArgumentList '/Online','/Cleanup-Image','/StartComponentCleanup','/ResetBase' -Wait -NoNewWindow -ErrorAction Stop
-    Write-Host "DISM component cleanup completed." -ForegroundColor Green
-} catch {
-    Write-Host "DISM component cleanup failed: $_" -ForegroundColor Yellow
-}
-
-Write-Host "Configuring Disk Cleanup (CleanMgr) sageset 1 to select all Volume Caches..."
-$vcKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
-try {
-    if (Test-Path $vcKey) {
-        Get-ChildItem -Path $vcKey -ErrorAction SilentlyContinue | ForEach-Object {
-            $path = $_.PsPath
-            # StateFlags0001 corresponds to sageset:1; set value to 2 to mark for cleanup
-            New-ItemProperty -Path $path -Name 'StateFlags0001' -PropertyType DWord -Value 2 -Force -ErrorAction SilentlyContinue | Out-Null
-        }
-        Write-Host "VolumeCaches configured for CleanMgr sageset 1." -ForegroundColor Green
-
-        Write-Host "Running CleanMgr /sagerun:1 (system cleanup using sageset 1)..."
-        try {
-            Start-Process -FilePath cleanmgr.exe -ArgumentList '/sagerun:1' -Wait -NoNewWindow -ErrorAction Stop
-            Write-Host "CleanMgr completed." -ForegroundColor Green
-        } catch {
-            Write-Host "CleanMgr run failed: $_" -ForegroundColor Yellow
-        }
+foreach ($f in $moduleFiles) {
+    $path = Join-Path $ModuleDir $f
+    if (Test-Path $path) {
+        Write-Host "Loading module: $f"
+        . $path
     } else {
-        Write-Host "VolumeCaches registry path not found - skipping CleanMgr configuration." -ForegroundColor Yellow
+        Write-Host "Module not found: $path" -ForegroundColor Yellow
     }
-} catch {
-    Write-Host "Failed configuring CleanMgr sageset: $_" -ForegroundColor Yellow
 }
 
-# ================================
-# Reboot detection
-# ================================
-$RebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+# Execute modules if functions are present
+$results = @{}
+if (Get-Command Invoke-UpdateChocolatey -ErrorAction SilentlyContinue) { $results.Choco = Invoke-UpdateChocolatey }
+if (Get-Command Invoke-UpdateWinget -ErrorAction SilentlyContinue) { $results.Winget = Invoke-UpdateWinget }
+if (Get-Command Invoke-UpdateWindows -ErrorAction SilentlyContinue) { $results.Windows = Invoke-UpdateWindows }
+if (Get-Command Invoke-UpdatePowerShellModules -ErrorAction SilentlyContinue) { $results.PowerShellModules = Invoke-UpdatePowerShellModules }
+if (Get-Command Invoke-UpdatePython -ErrorAction SilentlyContinue) { $results.Python = Invoke-UpdatePython }
+if (Get-Command Invoke-UpdateDocker -ErrorAction SilentlyContinue) { $results.Docker = Invoke-UpdateDocker }
+
+Write-Host "Module execution results:"; $results | Format-Table -AutoSize
 
 # ================================
 # Event Log signal (user toast trigger)
@@ -559,14 +175,11 @@ $DurationText = '{0:hh\:mm\:ss}' -f $Elapsed
 $EndEventId = 1002
 $EndMessage = "Daglig opdatering færdig (tid: $DurationText)"
 
-Write-EventLog -LogName $LogName `
-               -Source $Source `
-               -EventId $EndEventId `
-               -EntryType Information `
-               -Message $EndMessage
-
-if ($ToastAvailable) {
-    New-BurntToastNotification -Text 'Systemopdatering', $EndMessage
+if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
+    Invoke-Notify -Message $EndMessage -EventId $EndEventId -Title 'Systemopdatering'
+} else {
+    Write-EventLog -LogName $LogName -Source $Source -EventId $EndEventId -EntryType Information -Message $EndMessage
+    if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $EndMessage }
 }
 
 exit $global:ExitCode
