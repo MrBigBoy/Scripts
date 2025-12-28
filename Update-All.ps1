@@ -109,11 +109,52 @@ if (Get-Command Update-MpSignature -ErrorAction SilentlyContinue) {
 # PowerShell modules (PSGallery)
 # ================================
 Write-Host "Updating PowerShell modules..."
+$failedModules = @()
 Get-InstalledModule -ErrorAction SilentlyContinue |
-    Where-Object { $_.Repository -eq "PSGallery" } |
+    Where-Object { $_.Repository -eq 'PSGallery' } |
     ForEach-Object {
-        Update-Module -Name $_.Name -Force -ErrorAction SilentlyContinue
+        $name = $_.Name
+        try {
+            Update-Module -Name $name -Force -ErrorAction Stop
+            Write-Host "Updated PowerShell module: $name"
+        } catch {
+            $msg = $_.Exception.Message
+            Write-Host ("Failed to update module {0}: {1}" -f $name, $msg) -ForegroundColor Yellow
+            if ($msg -match 'in use|currently in use|being used') {
+                $failedModules += $name
+            }
+        }
     }
+
+if ($failedModules.Count -gt 0) {
+    Write-Host "Some modules are in use and could not be updated now: $($failedModules -join ', ')" -ForegroundColor Yellow
+    try {
+        $pidToWait = $PID
+        $scriptToRerun = $MyInvocation.MyCommand.Path
+        $psHelperPath = Join-Path $env:TEMP "psmodules_update_and_rerun.ps1"
+
+        # Build helper script lines
+        $helperLines = @()
+        $helperLines += 'param($ParentPid, $MainScript)'
+        $helperLines += 'while (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }'
+        foreach ($mod in $failedModules) {
+            $escaped = $mod -replace "'","''"
+            $helperLines += 'try { Update-Module -Name ''' + $escaped + ''' -Force -ErrorAction Stop; Write-Host ''Updated module: ' + $escaped + ''' } catch { Write-Host (''Failed updating ' + $escaped + ': '' + $_.Exception.Message) -ForegroundColor Yellow }'
+        }
+        # Relaunch the main script using the $MainScript parameter inside the helper
+        $helperLines += "Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',`$MainScript)"
+
+        Set-Content -Path $psHelperPath -Value $helperLines -Encoding ASCII -Force
+
+        Write-Host "Launching elevated PowerShell to update modules after this script exits..." -ForegroundColor Yellow
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$psHelperPath,$pidToWait,$scriptToRerun) -Verb RunAs -WindowStyle Hidden
+
+        Write-Host "Exiting current PowerShell to allow elevated updater to run..." -ForegroundColor Yellow
+        exit 0
+    } catch {
+        Write-Host "Failed to prepare elevated module updater: $_" -ForegroundColor Yellow
+    }
+}
 
 # ================================
 # Node.js & npm updates
