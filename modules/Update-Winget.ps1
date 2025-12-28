@@ -28,6 +28,7 @@ function Invoke-UpdateWinget {
         Message = ''
         Duration = 0
         Errors = @()
+        Output = ''
     }
 
     if ($WhatIf) {
@@ -36,26 +37,18 @@ function Invoke-UpdateWinget {
     } else {
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Write-Host "Updating Winget packages (excluding Microsoft Office)..."
+                # capture upgrade list and operations
+                $rawList = & winget upgrade --source winget 2>&1 | Select-Object -Skip 1
+                $result.Output = ($rawList -join "`n")
 
-                $packages = winget upgrade --source winget | Select-Object -Skip 1
-
-                foreach ($line in $packages) {
-                    if ($line -match "Microsoft\.Office") {
-                        Write-Host "Skipping Microsoft Office (handled by C2R)"
-                        continue
-                    }
-
+                foreach ($line in $rawList) {
+                    if ($line -match "Microsoft\.Office") { continue }
                     if ($line -match "^\s*(.+?)\s{2,}(\S+)\s{2,}") {
                         $packageId = $matches[2]
-
-                        winget upgrade `
-                            --id $packageId `
-                            --accept-source-agreements `
-                            --accept-package-agreements `
-                            --scope machine
+                        & winget upgrade --id $packageId --accept-source-agreements --accept-package-agreements --scope machine 2>&1 | Out-Null
                     }
                 }
+
                 $result.Success = $true
                 $result.Message = 'Winget upgrades attempted'
             } else {

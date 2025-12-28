@@ -29,6 +29,7 @@ function Invoke-UpdateWSL {
         Duration = 0
         Errors = @()
         DistroResults = @()
+        Output = ''
     }
 
     if ($WhatIf) {
@@ -48,6 +49,7 @@ function Invoke-UpdateWSL {
                 } elseif (($raw -join "`n") -match 'Usage:') {
                     # wsl produced usage text -> likely unsupported flags; do not emit help to user
                     $result.Message = 'wsl present but list flags unsupported on this host'
+                    $result.Output = ($raw -join "`n")
                 } else {
                     $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($_ -notmatch '^Windows') -and ($_ -notmatch '^Usage:') }
                     $distros = $lines | Where-Object { $_ -ne '' }
@@ -57,10 +59,11 @@ function Invoke-UpdateWSL {
                             try {
                                 # Run command inside distro, capture output and exit code
                                 $cmdOut = & wsl.exe -d $distro -- sh -lc 'sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt -y upgrade' 2>&1
+                                $combined = ($cmdOut -join "`n")
                                 if ($LASTEXITCODE -eq 0) {
-                                    $result.DistroResults += [PSCustomObject]@{ Distro = $distro; Success = $true }
+                                    $result.DistroResults += [PSCustomObject]@{ Distro = $distro; Success = $true; Output = $combined }
                                 } else {
-                                    $result.DistroResults += [PSCustomObject]@{ Distro = $distro; Success = $false; Error = ($cmdOut -join "`n") }
+                                    $result.DistroResults += [PSCustomObject]@{ Distro = $distro; Success = $false; Error = $combined }
                                 }
                             } catch {
                                 $result.DistroResults += [PSCustomObject]@{ Distro = $distro; Success = $false; Error = $_.Exception.Message }

@@ -28,6 +28,7 @@ function Invoke-UpdateChocolatey {
         Message = ''
         Duration = 0
         Errors = @()
+        Output = ''
     }
 
     if ($WhatIf) {
@@ -36,8 +37,9 @@ function Invoke-UpdateChocolatey {
     } else {
         try {
             if (Get-Command choco -ErrorAction SilentlyContinue) {
-                Write-Host "Updating Chocolatey packages..."
-                choco upgrade all -y --ignore-checksums --fail-on-unfound=false
+                # capture output (stdout+stderr) and avoid printing to console
+                $out = & choco upgrade all -y --ignore-checksums --fail-on-unfound=false 2>&1
+                $result.Output = ($out -join "`n")
                 $result.Success = $true
                 $result.Message = 'Chocolatey upgrade completed'
             } else {
@@ -52,10 +54,6 @@ function Invoke-UpdateChocolatey {
     }
 
     $result.Duration = (Get-Date) - $start
-
-    if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) {
-        Write-LogJsonLine -Object $result -LogFile $LogFile
-    }
-
+    if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) { Write-LogJsonLine -Object $result -LogFile $LogFile }
     return $result
 }

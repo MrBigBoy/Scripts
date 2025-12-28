@@ -180,22 +180,28 @@ foreach ($f in $moduleFiles) {
     }
 
     if (Test-Path $path) {
-        Write-Host "Loading module: $f"
+        Write-Host "Checking: $shortName"
         . $path
         $invoke = $invokeMap[$f]
         if (Get-Command $invoke -ErrorAction SilentlyContinue) {
             try {
                 $res = & $invoke -WhatIf:$WhatIf -LogFile $LogFile
                 $results += $res
+                if ($res -and $res.Success) {
+                    Write-Host "Checked: $shortName - Success" -ForegroundColor Green
+                } else {
+                    Write-Host "Checked: $shortName - Failed" -ForegroundColor Yellow
+                }
             } catch {
                 $errObj = [PSCustomObject]@{ Module = $shortName; Success = $false; Message = 'Invocation failed'; Errors = @($_.Exception.Message); Duration = 0 }
                 $results += $errObj
+                Write-Host "Checked: $shortName - Invocation failed" -ForegroundColor Yellow
             }
         } else {
-            Write-Host "Function $invoke not found in $f" -ForegroundColor Yellow
+            Write-Host "Function for $shortName not found in $f" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "Module not found: $path" -ForegroundColor Yellow
+        Write-Host "Module file for $shortName not found: $path" -ForegroundColor Yellow
     }
 }
 
