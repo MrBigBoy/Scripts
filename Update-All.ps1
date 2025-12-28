@@ -246,4 +246,32 @@ if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
     if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $EndMessage }
 }
 
+# After collecting $results and logging summary, find failed PowerShell modules and trigger helper
+$psModuleResult = $results | Where-Object { $_.Module -eq 'PowerShellModules' }
+if ($psModuleResult) {
+    $failed = @()
+    if ($psModuleResult.FailedModules) { $failed = $psModuleResult.FailedModules }
+    if ($failed.Count -gt 0) {
+        try {
+            $payload = [PSCustomObject]@{
+                ParentPid = $PID
+                LogFile = $LogFile
+                Modules = $failed
+            }
+            $tmp = Join-Path $env:TEMP ("update_modules_payload_{0}.json" -f ([guid]::NewGuid().ToString()))
+            $payload | ConvertTo-Json -Depth 5 | Out-File -FilePath $tmp -Encoding UTF8
+
+            $helper = Join-Path $ModuleDir 'Update-Modules-Helper.ps1'
+            if (Test-Path $helper) {
+                Write-Host "Launching elevated helper to update locked modules after exit: $helper"
+                Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$helper,$tmp) -Verb RunAs
+            } else {
+                Write-Host "Helper not found: $helper" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "Failed to launch helper: $_" -ForegroundColor Yellow
+        }
+    }
+}
+
 exit $global:ExitCode
