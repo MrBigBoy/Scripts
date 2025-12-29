@@ -36,25 +36,51 @@ function Invoke-UpdateKubeHelm {
         $result.Success = $true
     } else {
         try {
-            if (Get-Command kubectl -ErrorAction SilentlyContinue) {
-                # Best-effort: try to update kubectl via choco/winget if available
-                if (Get-Command choco -ErrorAction SilentlyContinue) { choco upgrade kubernetes-cli -y 2>$null }
-                elseif (Get-Command winget -ErrorAction SilentlyContinue) { winget upgrade --id Kubernetes.Kubectl --accept-package-agreements --accept-source-agreements --scope machine 2>$null }
-                $result.Details += 'kubectl update attempted via choco/winget'
+            $performed = $false
+            $haveKubectl = (Get-Command kubectl -ErrorAction SilentlyContinue) -ne $null
+            $haveHelm = (Get-Command helm -ErrorAction SilentlyContinue) -ne $null
+
+            if ($haveKubectl) {
+                if (Get-Command choco -ErrorAction SilentlyContinue) {
+                    & choco upgrade kubernetes-cli -y 2>$null
+                    $result.Details += 'kubectl update attempted via choco'
+                    $performed = $true
+                } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+                    & winget upgrade --id Kubernetes.Kubectl --accept-package-agreements --accept-source-agreements --scope machine 2>$null
+                    $result.Details += 'kubectl update attempted via winget'
+                    $performed = $true
+                } else {
+                    $result.Details += 'kubectl present but no package manager updater available'
+                }
             } else {
                 $result.Details += 'kubectl not found'
             }
 
-            if (Get-Command helm -ErrorAction SilentlyContinue) {
+            if ($haveHelm) {
                 # Attempt helm repo update
-                helm repo update 2>$null
-                $result.Details += 'helm repo update attempted'
+                try {
+                    helm repo update 2>$null
+                    $result.Details += 'helm repo update attempted'
+                    $performed = $true
+                } catch {
+                    $result.Details += 'helm present but repo update failed or not applicable'
+                }
             } else {
                 $result.Details += 'helm not found'
             }
 
-            $result.Success = $true
-            $result.Message = 'kubectl/helm update attempted (best-effort)'
+            if ($performed) {
+                $result.Success = $true
+                $result.Message = 'kubectl/helm update attempted (best-effort)'
+            } else {
+                if ($haveKubectl -or $haveHelm) {
+                    $result.Success = $false
+                    $result.Message = 'kubectl/helm installed but not managed by package manager (skipping)'
+                } else {
+                    $result.Success = $false
+                    $result.Message = 'kubectl and helm not found'
+                }
+            }
         } catch {
             $result.Errors += $_.Exception.Message
             $result.Message = 'kubectl/helm update failed'

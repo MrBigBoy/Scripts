@@ -128,13 +128,7 @@ $moduleFiles = @(
     'Update-WSL.ps1',
     'Update-Conda.ps1',
     'Update-KubeHelm.ps1',
-    'Update-CloudCLI.ps1',
-    'Update-Chrome.ps1',
-    'Update-Edge.ps1',
-    'Update-Firefox.ps1',
-    'Update-Opera.ps1',
-    'Update-Brave.ps1',
-    'Update-Vivaldi.ps1'
+    'Update-CloudCLI.ps1'
 )
 
 $invokeMap = @{
@@ -152,12 +146,6 @@ $invokeMap = @{
     'Update-Conda.ps1' = 'Invoke-UpdateConda'
     'Update-KubeHelm.ps1' = 'Invoke-UpdateKubeHelm'
     'Update-CloudCLI.ps1' = 'Invoke-UpdateCloudCLI'
-    'Update-Chrome.ps1' = 'Invoke-UpdateChrome'
-    'Update-Edge.ps1' = 'Invoke-UpdateEdge'
-    'Update-Firefox.ps1' = 'Invoke-UpdateFirefox'
-    'Update-Opera.ps1' = 'Invoke-UpdateOpera'
-    'Update-Brave.ps1' = 'Invoke-UpdateBrave'
-    'Update-Vivaldi.ps1' = 'Invoke-UpdateVivaldi'
 }
 
 $shortMap = @{
@@ -175,14 +163,7 @@ $shortMap = @{
     'Update-Conda.ps1' = 'Conda'
     'Update-KubeHelm.ps1' = 'KubeHelm'
     'Update-CloudCLI.ps1' = 'CloudCLI'
-    'Update-Chrome.ps1' = 'Chrome'
-    'Update-Edge.ps1' = 'Edge'
-    'Update-Firefox.ps1' = 'Firefox'
-    'Update-Opera.ps1' = 'Opera'
-    'Update-Brave.ps1' = 'Brave'
-    'Update-Vivaldi.ps1' = 'Vivaldi'
 }
-
 
 $results = @()
 foreach ($f in $moduleFiles) {
