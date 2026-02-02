@@ -3,24 +3,25 @@
 This repository contains a modular PowerShell-based system updater/orchestrator intended to run on Windows systems. The orchestrator `Update-All.ps1` loads small, focused updater scripts from the `modules/` folder to perform package and system maintenance tasks (Chocolatey, Winget, Windows Update, PowerShell modules, Python packages, Docker, etc.).
 
 ## Files of interest
-- `Update-All.ps1` — main orchestrator. Supports `-WhatIf`, `-SkipModules`, `-RunModules`, and `-LogFile`.
-- `modules/` — directory containing per-concern updater scripts. Each module exposes a single `Invoke-Update*` function and returns a structured PSCustomObject.
+- `Update-All.ps1` ï¿½ main orchestrator. Supports `-WhatIf`, `-SkipModules`, `-RunModules`, and `-LogFile`.
+- `modules/` ï¿½ directory containing per-concern updater scripts. Each module exposes a single `Invoke-Update*` function and returns a structured PSCustomObject.
   - `Update-Chocolatey.ps1`
   - `Update-Winget.ps1`
   - `Update-WindowsUpdate.ps1`
   - `Update-PowerShellModules.ps1`
   - `Update-Python.ps1`
   - `Update-Docker.ps1`
-  - `Notify.ps1` — event log + BurntToast helper (`Invoke-Notify`) and `Ensure-ToastAvailable`.
-  - `Helpers.ps1` — utility helpers like `Invoke-WithRetry` and `Write-LogJsonLine`.
-  - `Update-Modules-Helper.ps1` — elevated helper to update locked PowerShell modules after the main run exits.
+  - `Notify.ps1` ï¿½ event log + BurntToast helper (`Invoke-Notify`) and `Ensure-ToastAvailable`.
+  - `Helpers.ps1` ï¿½ utility helpers like `Invoke-WithRetry` and `Write-LogJsonLine`.
+  - `Update-Modules-Helper.ps1` ï¿½ elevated helper to update locked PowerShell modules after the main run exits.
 
 ## Features
 - Modular design: each updater is small and independently callable.
-- Structured logging: modules write JSONL lines when `-LogFile` is provided.
+- Structured logging: modules write JSONL lines to timestamped log files (one per run).
 - Dry-run support: `-WhatIf` parameter to validate behavior without making changes.
 - Safe module updates: failed PowerShell module updates are retried via an elevated helper that runs after the orchestrator exits.
-- Notifications: Event Log entries plus optional BurntToast notifications using `Invoke-Notify`.
+- Notifications: Event Log entries plus interactive BurntToast notifications with clickable buttons to view logs in PowerShell 7 (or PowerShell 5 if 7 unavailable).
+- Timestamped logs: each run creates a new log file (`update-log_yyyyMMdd_HHmmss.jsonl`) for easy tracking.
 
 ## Prerequisites
 - PowerShell (Windows PowerShell or PowerShell 7)
@@ -28,31 +29,25 @@ This repository contains a modular PowerShell-based system updater/orchestrator 
 - Optional: Chocolatey, winget, docker, pip/pipx, rustup, gem, code (VSCode CLI) depending on which modules you run
 
 ## Quick usage
-Open an elevated PowerShell console and run:
+The easiest way to run the updater is to use the **`Update all.lnk`** shortcut file (which runs `Update-All.ps1` with no parameters).
+
+Alternatively, open an elevated PowerShell console and run:
 
 `.\Update-All.ps1`
 
 Dry-run (no changes):
 
-`.\Update-All.ps1 -WhatIf -LogFile C:\Temp\update-log.jsonl`
+`.\Update-All.ps1 -WhatIf`
 
-Run only specific modules:
+View the latest log:
 
-`.\Update-All.ps1 -RunModules @('Chocolatey','Python')`
-
-Skip modules:
-
-`.\Update-All.ps1 -SkipModules @('Docker')`
-
-Custom log file:
-
-`.\Update-All.ps1 -LogFile C:\Path\to\updates.jsonl`
+`.\tools\View-UpdateLog.ps1`
 
 ## Scheduled task
 The orchestrator can create a scheduled task; default task name is `Update System (Choco + Winget + Windows Update)`. The task points to `C:\Scripts\Update-All.ps1` (update path if you move the repository).
 
 ## Logs
-The orchestrator and modules append structured JSON lines (JSONL) to the file configured via `-LogFile`. Each line is a compact JSON object for easy ingestion.
+Each run creates a timestamped log file in `%LOCALAPPDATA%\SystemUpdater\` with the format `update-log_yyyyMMdd_HHmmss.jsonl`. The orchestrator appends structured JSON lines for easy ingestion. Use `.\tools\View-UpdateLog.ps1` to view the most recent log, or click the "Show Log" button in the completion notification to open it in PowerShell 7.
 
 ## Troubleshooting
 - "Module in use" errors when updating PowerShell modules: the orchestrator collects failed modules and launches `modules/Update-Modules-Helper.ps1` elevated. Inspect the JSONL log for helper results.

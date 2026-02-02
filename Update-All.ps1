@@ -3,8 +3,16 @@
 # ================================
 param(
     [switch]$WhatIf,
-    [string]$LogFile = (Join-Path $env:LOCALAPPDATA 'SystemUpdater\update-log.jsonl')
+    [string]$LogFile
 )
+
+# Create a unique log file for each run if not specified
+if (-not $LogFile) {
+    $logDir = Join-Path $env:LOCALAPPDATA 'SystemUpdater'
+    if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+    $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $LogFile = Join-Path $logDir "update-log_$timestamp.jsonl"
+}
 
 try {
     # ================================
@@ -19,7 +27,7 @@ try {
         $psExecutable = if ($pwsh7) { 'pwsh' } else { 'powershell' }
         
         $currentScript = $MyInvocation.MyCommand.Path
-        Start-Process -FilePath $psExecutable -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$currentScript) -Verb RunAs
+        Start-Process -FilePath $psExecutable -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $currentScript) -Verb RunAs
         exit
     }
 
@@ -60,7 +68,8 @@ try {
         if ($result) {
             if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {
                 foreach ($r in $result) { $results += $r }
-            } else {
+            }
+            else {
                 $results += $result
             }
         }
@@ -69,12 +78,31 @@ try {
     $summary = [PSCustomObject]@{ Timestamp = (Get-Date).ToString('o'); Results = $results }
     if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) { Write-LogJsonLine -Object $summary -LogFile $LogFile }
     Write-Host (Get-LocalizedString -Key 'ModuleExecutionResults')
-    $results | Select-Object Module, Success, Message, Duration, @{Name='Error';Expression={if ($_.Errors) { $_.Errors -join '; ' } else { '' }}} | Format-Table -AutoSize
+    $results | Select-Object Module, Success, Message, Duration, @{Name = 'Error'; Expression = { if ($_.Errors) { $_.Errors -join '; ' } else { '' } } } | Format-Table -AutoSize
 
     # ================================
     # Finalize
     # ================================
-    Send-CompletionNotification -LogFile $LogFile
+    # Create completion toast notification
+    $rebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+    $message = if ($rebootRequired) { 
+        Get-LocalizedString -Key 'SystemUpdatesCompletedReboot' 
+    }
+    else { 
+        Get-LocalizedString -Key 'SystemUpdatesCompleted' 
+    }
+    
+    $completionScript = Join-Path $env:TEMP "launch-ps-$([guid]::NewGuid().ToString().Substring(0,8)).ps1"
+    @"
+`$ps7 = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+`$psExecutable = if (`$ps7) { 'pwsh.exe' } else { 'powershell.exe' }
+if (Test-Path '$LogFile') { & `$psExecutable -NoProfile -ExecutionPolicy Bypass -NoExit -Command "Get-Content '$LogFile' | ConvertFrom-Json | Format-List; Write-Host 'Press Enter to continue...'; $null = Read-Host" } else { Write-Host 'Log file not found: $LogFile' }
+"@ | Set-Content $completionScript
+    
+    $buttonText = Get-LocalizedString -Key 'ShowLog'
+    $completionButton = New-BTButton -Content $buttonText -Arguments "file:///$($completionScript -replace '\\', '/')"
+    New-BurntToastNotification -Text $message -Button $completionButton
+    
     Register-UpdateTask
     $ScriptStopwatch.Stop()
     Send-EndNotification -Duration ('{0:hh\:mm\:ss}' -f $ScriptStopwatch.Elapsed) -LogFile $LogFile -Results $results
@@ -87,15 +115,18 @@ try {
     Write-Host (Get-LocalizedString -Key 'ScriptFinishedDuration' -FormatArgs ('{0:hh\:mm\:ss}' -f $ScriptStopwatch.Elapsed)) -ForegroundColor Green
     $null = Read-Host
     exit $global:ExitCode
-} catch {
+}
+catch {
     $errTitle = if (Get-Command Get-LocalizedString -ErrorAction SilentlyContinue) {
         Get-LocalizedString -Key 'ScriptErrorTitle'
-    } else {
+    }
+    else {
         '[FEJL]'
     }
     $errMsg = if (Get-Command Get-LocalizedString -ErrorAction SilentlyContinue) {
         Get-LocalizedString -Key 'ScriptErrorMessage' -FormatArgs $_.Exception.Message
-    } else {
+    }
+    else {
         $_.Exception.Message
     }
     Write-Host ("\n{0} {1}" -f $errTitle, $errMsg) -ForegroundColor Red
@@ -104,7 +135,8 @@ try {
     }
     $pressEnter = if (Get-Command Get-LocalizedString -ErrorAction SilentlyContinue) {
         Get-LocalizedString -Key 'PressEnterToClose'
-    } else {
+    }
+    else {
         'Scriptet afsluttes. Tryk Enter for at lukke...'
     }
     Write-Host ("\n{0}" -f $pressEnter) -ForegroundColor Gray
