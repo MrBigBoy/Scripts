@@ -1,4 +1,4 @@
-function Initialize-ToastNotifications {
+﻿function Initialize-ToastNotifications {
     [CmdletBinding()]
     param(
         [int]$CheckInterval = 7,

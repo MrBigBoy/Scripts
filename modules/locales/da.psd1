@@ -1,4 +1,4 @@
-@{
+﻿@{
     DailyUpdateStarted = 'Daglig opdatering startet'
     DailyUpdateFinished = 'Daglig opdatering færdig (tid: {0})'
     SystemUpdate = 'Systemopdatering'

@@ -1,4 +1,4 @@
-function Get-ModuleStatus {
+﻿function Get-ModuleStatus {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]

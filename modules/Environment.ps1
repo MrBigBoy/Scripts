@@ -1,4 +1,4 @@
-function Initialize-Environment {
+﻿function Initialize-Environment {
     [CmdletBinding()]
     param(
         [string]$LogFile

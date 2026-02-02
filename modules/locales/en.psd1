@@ -1,4 +1,4 @@
-@{
+﻿@{
     DailyUpdateStarted = 'Daily update started'
     DailyUpdateFinished = 'Daily update finished (time: {0})'
     SystemUpdate = 'System Update'

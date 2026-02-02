@@ -1,4 +1,4 @@
-# Module registry for orchestrator
+﻿# Module registry for orchestrator
 @(
     @{ File = 'Update-Chocolatey.ps1'; Name = 'Chocolatey'; Function = 'Invoke-UpdateChocolatey' }
     @{ File = 'Update-Winget.ps1'; Name = 'Winget'; Function = 'Invoke-UpdateWinget' }
