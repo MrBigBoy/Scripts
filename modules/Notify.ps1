@@ -1,4 +1,4 @@
-function Ensure-ToastAvailable {
+function Initialize-ToastNotifications {
     [CmdletBinding()]
     param(
         [int]$CheckInterval = 7,
@@ -27,6 +27,47 @@ function Ensure-ToastAvailable {
     }
 }
 
+function Send-StartNotification {
+    [CmdletBinding()]
+    param(
+        [string]$LogFile
+    )
+    
+    $message = Get-LocalizedString -Key 'DailyUpdateStarted'
+    $title = Get-LocalizedString -Key 'SystemUpdate'
+    Invoke-Notify -Message $message -EventId 1000 -Title $title -LogFile $LogFile
+}
+
+function Send-CompletionNotification {
+    [CmdletBinding()]
+    param(
+        [string]$LogFile
+    )
+    
+    $rebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+    $message = if ($rebootRequired) { 
+        Get-LocalizedString -Key 'SystemUpdatesCompletedReboot' 
+    } else { 
+        Get-LocalizedString -Key 'SystemUpdatesCompleted' 
+    }
+    $title = Get-LocalizedString -Key 'SystemUpdate'
+    Invoke-Notify -Message $message -EventId 1001 -Title $title -LogFile $LogFile
+}
+
+function Send-EndNotification {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Duration,
+        
+        [string]$LogFile
+    )
+    
+    $message = Get-LocalizedString -Key 'DailyUpdateFinished' -FormatArgs $Duration
+    $title = Get-LocalizedString -Key 'SystemUpdate'
+    Invoke-Notify -Message $message -EventId 1002 -Title $title -LogFile $LogFile
+}
+
 function Invoke-Notify {
     [CmdletBinding()]
     param(
@@ -53,7 +94,7 @@ function Invoke-Notify {
         if (Get-Command New-BurntToastNotification -ErrorAction SilentlyContinue) {
             New-BurntToastNotification -Text $Title, $Message
         } else {
-            $toastOk = Ensure-ToastAvailable
+            $toastOk = Initialize-ToastNotifications
             if ($toastOk) { New-BurntToastNotification -Text $Title, $Message }
         }
     } catch {
