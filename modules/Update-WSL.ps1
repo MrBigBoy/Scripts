@@ -37,7 +37,25 @@ function Invoke-UpdateWSL {
         $result.Success = $true
     } else {
         try {
-            if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+            # Check if wsl.exe exists
+            if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+                # WSL not installed, try to enable it
+                Write-Host "  WSL not found. Attempting to enable WSL..." -ForegroundColor Yellow
+                
+                try {
+                    # Enable WSL and Virtual Machine Platform
+                    Enable-WindowsOptionalFeature -FeatureName Microsoft-Windows-Subsystem-Linux -Online -NoRestart -ErrorAction Stop | Out-Null
+                    Enable-WindowsOptionalFeature -FeatureName VirtualMachinePlatform -Online -NoRestart -ErrorAction Stop | Out-Null
+                    
+                    Write-Host "  WSL features enabled. Restart required to complete installation." -ForegroundColor Yellow
+                    $result.Message = 'WSL features enabled. Please restart your computer, then install a Linux distribution from Microsoft Store.'
+                    $result.Success = $false
+                } catch {
+                    $result.Errors += $_.Exception.Message
+                    $result.Message = "WSL not installed and failed to enable: $($_.Exception.Message)"
+                    $result.Success = $false
+                }
+            } else {
                 # Try preferred list options, capture both stdout and stderr to avoid raw help printing
                 $raw = & wsl.exe --list --quiet 2>&1
                 if (-not $raw -or ($raw -join "`n") -match 'Usage:') {
@@ -45,7 +63,8 @@ function Invoke-UpdateWSL {
                 }
 
                 if (-not $raw) {
-                    $result.Message = 'wsl --list returned no output'
+                    $result.Message = 'WSL is installed but no distributions found. Install a Linux distribution from Microsoft Store (e.g., Ubuntu).'
+                    $result.Success = $true
                 } elseif (($raw -join "`n") -match 'Usage:') {
                     # wsl produced usage text -> likely unsupported flags; do not emit help to user
                     $result.Message = 'wsl present but list flags unsupported on this host'
@@ -73,6 +92,7 @@ function Invoke-UpdateWSL {
                         $result.Message = 'WSL distro updates attempted'
                     } else {
                         $result.Message = 'No WSL distros found'
+                        $result.Success = $true
                     }
                 }
             } else {

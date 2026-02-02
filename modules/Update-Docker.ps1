@@ -41,6 +41,28 @@ function Invoke-UpdateDocker {
             } else {
                 docker info > $null 2>&1
                 if ($LASTEXITCODE -ne 0) {
+                    # Check if virtualization is enabled before attempting to start Docker
+                    $virtualizationEnabled = $false
+                    try {
+                        $hyperv = Get-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V-All -Online -ErrorAction SilentlyContinue
+                        $virtualizationEnabled = ($hyperv -and $hyperv.State -eq 'Enabled')
+                        
+                        # Also check via systeminfo if Hyper-V check fails
+                        if (-not $virtualizationEnabled) {
+                            $sysInfo = systeminfo.exe 2>$null | Select-String "Virtualization Enabled In Firmware"
+                            $virtualizationEnabled = ($sysInfo -match "Yes")
+                        }
+                    } catch {
+                        # If we can't check, assume it's enabled and try to start anyway
+                        $virtualizationEnabled = $true
+                    }
+                    
+                    if (-not $virtualizationEnabled) {
+                        $result.Message = 'Docker installed but virtualization is disabled. Enable virtualization in BIOS/UEFI settings.'
+                        $result.Success = $false
+                        return $result
+                    }
+                    
                     # Try to start Docker service
                     try {
                         Write-Host "  Attempting to start Docker..." -ForegroundColor Yellow

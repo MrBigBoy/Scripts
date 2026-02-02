@@ -108,6 +108,5 @@ try {
         'Scriptet afsluttes. Tryk Enter for at lukke...'
     }
     Write-Host ("\n{0}" -f $pressEnter) -ForegroundColor Gray
-    $null = Read-Host
     exit 1
 }
