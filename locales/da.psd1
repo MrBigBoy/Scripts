@@ -50,4 +50,5 @@
     SmokeTestResults = 'Smoke test resultater:'
     DefaultLogName = 'Applikation'
     DefaultLogSource = 'SystemOpdatering'
+    ScriptFinishedDuration = 'Script færdig på {0}'
 }

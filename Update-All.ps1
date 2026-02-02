@@ -7,12 +7,13 @@ param(
 )
 
 try {
+    Write-Host "Starting System Update Script..."
     # ================================
     # Self-elevate to Administrator
     # ================================
-    if (-not ([Security.Principal.WindowsPrincipal] `
+    $isAdmin = [Security.Principal.WindowsPrincipal] `
         [Security.Principal.WindowsIdentity]::GetCurrent()
-        ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if (-not $isAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
         # Prefer PowerShell 7 if available
         $pwsh7 = Get-Command pwsh.exe -ErrorAction SilentlyContinue
@@ -34,13 +35,18 @@ try {
         if (Test-Path $path) { . $path }
     }
 
+    # Set the console window title to a localized value
+    $consoleTitle = Get-LocalizedString -Key 'SystemUpdate'
+    try { $host.UI.RawUI.WindowTitle = $consoleTitle } catch {}
+
     # ================================
     # Initialize
     # ================================
     Initialize-Environment -LogFile $LogFile
     $ScriptStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    $ToastAvailable = Initialize-ToastNotifications
+    Initialize-ToastNotifications | Out-Null
     Send-StartNotification -LogFile $LogFile
+    
     Write-Host (Get-LocalizedString -Key 'RunningAsAdmin') -ForegroundColor Green
 
     # ================================
@@ -53,7 +59,7 @@ try {
         $result = Invoke-UpdateModule -Module $module -ModuleDir $ModuleDir -WhatIf:$WhatIf -LogFile $LogFile
         if ($result) {
             if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {
-                $results += @($result)
+                foreach ($r in $result) { $results += $r }
             } else {
                 $results += $result
             }
@@ -63,10 +69,7 @@ try {
     $summary = [PSCustomObject]@{ Timestamp = (Get-Date).ToString('o'); Results = $results }
     if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) { Write-LogJsonLine -Object $summary -LogFile $LogFile }
     Write-Host (Get-LocalizedString -Key 'ModuleExecutionResults')
-    Write-Host (Get-LocalizedString -Key 'DebugResultCount' -FormatArgs $results.Count) -ForegroundColor Yellow
     $results | Format-Table -AutoSize
-    Write-Host (Get-LocalizedString -Key 'DebugRawResults') -ForegroundColor Yellow
-    $results | ConvertTo-Json -Depth 10 | Write-Host
 
     # ================================
     # Finalize
@@ -76,6 +79,10 @@ try {
     $ScriptStopwatch.Stop()
     Send-EndNotification -Duration ('{0:hh\:mm\:ss}' -f $ScriptStopwatch.Elapsed) -LogFile $LogFile -Results $results
     Invoke-FailedModulesHelper -Results $results -ModuleDir $ModuleDir -LogFile $LogFile
+
+    # Set the console title to a localized completion message
+    $doneTitle = Get-LocalizedString -Key 'SystemUpdateCompleted'
+    try { $host.UI.RawUI.WindowTitle = $doneTitle } catch {}
 
     Write-Host (Get-LocalizedString -Key 'ScriptFinishedDuration' -FormatArgs ('{0:hh\:mm\:ss}' -f $ScriptStopwatch.Elapsed)) -ForegroundColor Green
     $null = Read-Host
