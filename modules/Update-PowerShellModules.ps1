@@ -34,33 +34,33 @@ function Invoke-UpdatePowerShellModules {
     }
 
     if ($WhatIf) {
-        $result.Message = 'WhatIf: Skipping PowerShell modules update'
+        $result.Message = (Get-LocalizedString -Key 'WhatIfPowerShellModules')
         $result.Success = $true
     } else {
         try {
-            Write-Host "Updating PowerShell modules..."
+            Write-Host (Get-LocalizedString -Key 'UpdatingPowerShellModules')
             Get-InstalledModule -ErrorAction SilentlyContinue |
                 Where-Object { $_.Repository -eq 'PSGallery' } |
                 ForEach-Object {
                     $name = $_.Name
                     try {
                         Update-Module -Name $name -Force -ErrorAction Stop
-                        Write-Host "Updated PowerShell module: $name"
+                        Write-Host (Get-LocalizedString -Key 'UpdatedPowerShellModule' -FormatArgs $name)
                     } catch {
                         $msg = $_.Exception.Message
-                        Write-Host ("Failed to update module {0}: {1}" -f $name, $msg) -ForegroundColor Yellow
+                        Write-Host (Get-LocalizedString -Key 'FailedToUpdateModule' -FormatArgs $name, $msg) -ForegroundColor Yellow
                         $errors += $msg
                         if ($msg -match 'in use|currently in use|being used') { $failedModules += $name }
                     }
                 }
 
             $result.Success = ($failedModules.Count -eq 0)
-            $result.Message = 'PowerShell modules update attempted'
+            $result.Message = (Get-LocalizedString -Key 'PowerShellModulesUpdateAttempted')
             $result.FailedModules = $failedModules
             $result.Errors = $errors
         } catch {
             $result.Errors += $_.Exception.Message
-            $result.Message = 'PowerShell modules update failed'
+            $result.Message = (Get-LocalizedString -Key 'PowerShellModulesUpdateFailed')
             $result.Success = $false
         }
     }

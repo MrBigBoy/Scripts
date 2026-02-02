@@ -60,11 +60,46 @@ function Send-EndNotification {
         [Parameter(Mandatory=$true)]
         [string]$Duration,
         
-        [string]$LogFile
+        [string]$LogFile,
+        
+        [Parameter(Mandatory=$false)]
+        $Results
     )
     
     $message = Get-LocalizedString -Key 'DailyUpdateFinished' -FormatArgs $Duration
     $title = Get-LocalizedString -Key 'SystemUpdate'
+    
+    # Save results to temp file for viewer
+    if ($Results) {
+        try {
+            $resultsFile = Join-Path $env:TEMP "SystemUpdater_LastResults.json"
+            $Results | ConvertTo-Json -Depth 10 | Out-File -FilePath $resultsFile -Encoding UTF8 -Force
+            
+            # Create button to view results
+            $viewerScript = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'tools\Show-Results.ps1'
+            if (Test-Path $viewerScript) {
+                # Prefer PowerShell 7 if available
+                $pwsh7Path = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+                $psExecutable = if ($pwsh7Path) { $pwsh7Path } else { 'powershell.exe' }
+                
+                $argument = "-NoProfile -ExecutionPolicy Bypass -NoExit -Command `"& '$viewerScript' -ResultsFile '$resultsFile'`""
+                
+                # Create toast with clickable action
+                if (Get-Command New-BurntToastNotification -ErrorAction SilentlyContinue) {
+                    $action = New-BTAction -ActivationType Protocol -Arguments "powershell://open?cmd=$([uri]::EscapeDataString($argument))"
+                    # Fallback: use simple button since protocol might not work
+                    New-BurntToastNotification -Text $title, $message -SuppressPopup $false -Button (New-BTButton -Content "Se resultater" -Arguments "$psExecutable $argument")
+                } else {
+                    Invoke-Notify -Message $message -EventId 1002 -Title $title -LogFile $LogFile
+                }
+                return
+            }
+        } catch {
+            Write-Host "Failed to create results viewer: $_" -ForegroundColor Yellow
+        }
+    }
+    
+    # Fallback to regular notification
     Invoke-Notify -Message $message -EventId 1002 -Title $title -LogFile $LogFile
 }
 

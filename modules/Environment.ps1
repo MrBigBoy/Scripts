@@ -34,8 +34,12 @@ function Register-UpdateTask {
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
     }
     
+    # Prefer PowerShell 7 if available
+    $pwsh7Path = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+    $psExecutable = if ($pwsh7Path) { $pwsh7Path } else { 'powershell.exe' }
+    
     $Argument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
-    $Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $Argument
+    $Action = New-ScheduledTaskAction -Execute $psExecutable -Argument $Argument
     $Trigger = New-ScheduledTaskTrigger -Daily -At $Time
     $Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -WakeToRun -Hidden -ExecutionTimeLimit (New-TimeSpan -Hours 4)
@@ -84,5 +88,3 @@ function Invoke-FailedModulesHelper {
         Write-Host (Get-LocalizedString -Key 'FailedToLaunchHelper' -FormatArgs $_) -ForegroundColor Yellow
     }
 }
-
-Export-ModuleMember -Function Initialize-Environment, Register-UpdateTask, Invoke-FailedModulesHelper

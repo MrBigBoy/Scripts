@@ -97,5 +97,3 @@ function Get-SystemLanguage {
 
 # Alias for convenience
 New-Alias -Name 'L' -Value 'Get-LocalizedString' -Force -ErrorAction SilentlyContinue
-
-Export-ModuleMember -Function Get-LocalizedString, Get-SystemLanguage -Alias L

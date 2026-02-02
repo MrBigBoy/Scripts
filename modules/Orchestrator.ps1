@@ -76,5 +76,3 @@ function Invoke-UpdateModule {
         return $errObj
     }
 }
-
-Export-ModuleMember -Function Get-ModuleStatus, Invoke-UpdateModule

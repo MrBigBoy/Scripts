@@ -31,11 +31,11 @@ function Invoke-UpdateWindows {
     }
 
     if ($WhatIf) {
-        $result.Message = 'WhatIf: Skipping Windows Update'
+        $result.Message = (Get-LocalizedString -Key 'WhatIfWindowsUpdate')
         $result.Success = $true
     } else {
         try {
-            Write-Host "Running Microsoft Update..."
+            Write-Host (Get-LocalizedString -Key 'RunningWindowsUpdate')
 
             if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
                 Install-Module PSWindowsUpdate -Force -Confirm:$false
@@ -49,10 +49,10 @@ function Invoke-UpdateWindows {
                 -IgnoreReboot
 
             $result.Success = $true
-            $result.Message = 'Windows Update invoked'
+            $result.Message = (Get-LocalizedString -Key 'WindowsUpdateInvoked')
         } catch {
             $result.Errors += $_.Exception.Message
-            $result.Message = 'Windows Update failed'
+            $result.Message = (Get-LocalizedString -Key 'WindowsUpdateFailed')
             $result.Success = $false
         }
     }
