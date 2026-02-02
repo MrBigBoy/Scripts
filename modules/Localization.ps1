@@ -28,8 +28,8 @@ function Load-LanguageFile {
     return $false
 }
 
-# Pre-load English as fallback
-Load-LanguageFile -Language 'en' | Out-Null
+# Pre-load Danish as default
+Load-LanguageFile -Language 'da' | Out-Null
 
 function Get-LocalizedString {
     [CmdletBinding()]

@@ -6,7 +6,8 @@ param(
 try {
     $payload = Get-Content -Path $PayloadPath -Raw | ConvertFrom-Json
 } catch {
-    Write-Host "Failed to read payload: $_" -ForegroundColor Red
+    $msg = Get-LocalizedString -Key 'FailedToReadPayload' -FormatArgs $_
+    Write-Host $msg -ForegroundColor Red
     exit 2
 }
 
@@ -27,12 +28,13 @@ $results = @()
 foreach ($m in $modules) {
     $res = [PSCustomObject]@{ Module = $m; Success = $false; Message = ''; Errors = @() }
     try {
-        Write-Host "Updating module: $m"
+        $msg = Get-LocalizedString -Key 'UpdatingModule' -FormatArgs $m
+        Write-Host $msg
         Start-Process -FilePath powershell.exe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-Command',"Update-Module -Name '$m' -Force") -Wait -NoNewWindow
-        if ($LASTEXITCODE -eq 0) { $res.Success = $true; $res.Message = 'Updated' } else { $res.Message = 'Update-Module returned non-zero' }
+        if ($LASTEXITCODE -eq 0) { $res.Success = $true; $res.Message = (Get-LocalizedString -Key 'ModuleUpdated') } else { $res.Message = (Get-LocalizedString -Key 'UpdateModuleNonZero') }
     } catch {
         $res.Errors += $_.Exception.Message
-        $res.Message = 'Failed'
+        $res.Message = (Get-LocalizedString -Key 'ModuleUpdateFailed')
     }
     $results += $res
 }
@@ -43,5 +45,5 @@ if ($logFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue))
     Write-LogJsonLine -Object $obj -LogFile $logFile
 }
 
-Write-Host "Module helper finished"
+Write-Host (Get-LocalizedString -Key 'ModuleHelperFinished')
 exit 0

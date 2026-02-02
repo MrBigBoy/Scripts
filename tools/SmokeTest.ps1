@@ -25,7 +25,7 @@ foreach ($f in $moduleFiles) {
     }
 }
 
-Write-Host "Smoke test results:"; $results | Format-Table -AutoSize
+Write-Host (Get-LocalizedString -Key 'SmokeTestResults'); $results | Format-Table -AutoSize
 
 if (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue) { Write-LogJsonLine -Object ([PSCustomObject]@{ Timestamp = (Get-Date).ToString('o'); Results = $results }) -LogFile $LogFile }
 

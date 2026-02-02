@@ -4,8 +4,8 @@
 
 try {
     if (-not $ResultsFile -or -not (Test-Path $ResultsFile)) {
-        Write-Host "No results file found." -ForegroundColor Yellow
-        Write-Host "Press Enter to close..." -ForegroundColor Gray
+        Write-Host (Get-LocalizedString -Key 'NoResultsFileFound') -ForegroundColor Yellow
+        Write-Host (Get-LocalizedString -Key 'PressEnterToClose') -ForegroundColor Gray
         $null = Read-Host
         exit
     }
@@ -66,13 +66,13 @@ try {
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Press Enter to close..." -ForegroundColor Gray
+    Write-Host (Get-LocalizedString -Key 'PressEnterToClose') -ForegroundColor Gray
     $null = Read-Host
 } catch {
-    Write-Host "\n[FEJL] $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ("\n{0} {1}" -f (Get-LocalizedString -Key 'ScriptErrorTitle'), (Get-LocalizedString -Key 'ScriptErrorMessage' -FormatArgs $_.Exception.Message)) -ForegroundColor Red
     if ($_.ScriptStackTrace) {
         Write-Host "\n$($_.ScriptStackTrace)" -ForegroundColor DarkGray
     }
-    Write-Host "\nPress Enter to close..." -ForegroundColor Gray
+    Write-Host ("\n{0}" -f (Get-LocalizedString -Key 'PressEnterToClose')) -ForegroundColor Gray
     $null = Read-Host
 }

@@ -26,7 +26,8 @@ function Write-LogJsonLine {
         $json = $Object | ConvertTo-Json -Depth 5 -Compress
         $json | Out-File -FilePath $LogFile -Encoding UTF8 -Append
     } catch {
-        Write-Host "Failed to write log: $_" -ForegroundColor Yellow
+        $msg = Get-LocalizedString -Key 'FailedToWriteLog' -FormatArgs $_
+        Write-Host $msg -ForegroundColor Yellow
     }
 }
 

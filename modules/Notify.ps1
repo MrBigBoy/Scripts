@@ -105,26 +105,40 @@ function Send-EndNotification {
 
 function Invoke-Notify {
     [CmdletBinding()]
+
     param(
         [Parameter(Mandatory=$true)][string]$Message,
         [int]$EventId = 1000,
-        [string]$Title = 'Systemopdatering',
-        [string]$LogName = 'Application',
-        [string]$Source = 'SystemUpdater',
+        [string]$Title,
+        [string]$LogName,
+        [string]$Source,
         [ValidateSet('Information','Warning','Error')] [string]$EntryType = 'Information',
         [string]$LogFile
     )
 
+    if (-not $Title) {
+        $Title = Get-LocalizedString -Key 'SystemUpdate'
+    }
+    if (-not $LogName) {
+        $LogName = Get-LocalizedString -Key 'DefaultLogName'
+    }
+    if (-not $Source) {
+        $Source = Get-LocalizedString -Key 'DefaultLogSource'
+    }
+
+
+    # Write to the Windows Event Log
     try {
         if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
             New-EventLog -LogName $LogName -Source $Source
         }
-
-        Write-EventLog -LogName $LogName -Source $Source -EventId $EventId -EntryType $EntryType -Message $Message
+        Write-EventLog -LogName $LogName -Source $Source -EventId $EventId -EntryType $EntryType -Message $Message | Out-Null
     } catch {
-        Write-Host "Failed to write event log: $_" -ForegroundColor Yellow
+        $msg = Get-LocalizedString -Key 'FailedToWriteEventLog' -FormatArgs $_
+        Invoke-LocalisedNotification -Message $msg -Type 'Warning'
     }
 
+    # Show a toast notification if possible
     try {
         if (Get-Command New-BurntToastNotification -ErrorAction SilentlyContinue) {
             New-BurntToastNotification -Text $Title, $Message
@@ -133,9 +147,11 @@ function Invoke-Notify {
             if ($toastOk) { New-BurntToastNotification -Text $Title, $Message }
         }
     } catch {
-        Write-Host "Toast notification failed: $_" -ForegroundColor Yellow
+        $msg = Get-LocalizedString -Key 'ToastNotificationFailed' -FormatArgs $_
+        Invoke-LocalisedNotification -Message $msg -Type 'Warning'
     }
 
+    # Write to a log file in JSON format if specified
     if ($LogFile) {
         if (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue) {
             $obj = [PSCustomObject]@{

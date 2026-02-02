@@ -38,8 +38,8 @@ function Invoke-UpdateChocolatey {
         try {
             if (Get-Command choco -ErrorAction SilentlyContinue) {
                 # capture output (stdout+stderr) and avoid printing to console
-                $out = & choco upgrade all -y --ignore-checksums --fail-on-unfound=false 2>&1
-                $result.Output = ($out -join "`n")
+                    $out = & choco upgrade all -y --ignore-checksums --fail-on-unfound=false 2>&1 | Out-Null
+                    $result.Output = '' # Output is not stored or shown
                 $result.Success = $true
                 $result.Message = 'Chocolatey upgrade completed'
             } else {

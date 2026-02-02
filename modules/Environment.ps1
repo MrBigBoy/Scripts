@@ -17,7 +17,8 @@
     # Exit code handling
     $global:ExitCode = 0
     trap {
-        Write-Host "Error: $_" -ForegroundColor Red
+        $msg = Get-LocalizedString -Key 'GenericError' -FormatArgs $_
+        Write-Host $msg -ForegroundColor Red
         $global:ExitCode = 1
     }
 }
