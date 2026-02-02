@@ -43,6 +43,10 @@ $helpersPath = Join-Path $ModuleDir 'Helpers.ps1'
 if (Test-Path $helpersPath) { . $helpersPath }
 $notifyPath = Join-Path $ModuleDir 'Notify.ps1'
 if (Test-Path $notifyPath) { . $notifyPath }
+$localizationPath = Join-Path $ModuleDir 'Localization.ps1'
+if (Test-Path $localizationPath) { . $localizationPath }
+$orchestratorPath = Join-Path $ModuleDir 'Orchestrator.ps1'
+if (Test-Path $orchestratorPath) { . $orchestratorPath }
 
 # ================================
 # BurntToast ensure + weekly update
@@ -91,14 +95,15 @@ $LogName = 'Application'
 $Source  = 'SystemUpdater'
 $StartEventId = 1000
 
-$StartMessage = 'Daglig opdatering startet'
+$StartMessage = Get-LocalizedString -Key 'DailyUpdateStarted'
+$Title = Get-LocalizedString -Key 'SystemUpdate'
 
 if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
-    Invoke-Notify -Message $StartMessage -EventId $StartEventId -Title 'Systemopdatering' -LogFile $LogFile
+    Invoke-Notify -Message $StartMessage -EventId $StartEventId -Title $Title -LogFile $LogFile
 } else {
     if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) { New-EventLog -LogName $LogName -Source $Source }
     Write-EventLog -LogName $LogName -Source $Source -EventId $StartEventId -EntryType Information -Message $StartMessage
-    if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $StartMessage }
+    if ($ToastAvailable) { New-BurntToastNotification -Text $Title, $StartMessage }
 }
 
 # ================================
@@ -110,112 +115,26 @@ trap {
     $global:ExitCode = 1
 }
 
-Write-Host "Running as Administrator" -ForegroundColor Green
+Write-Host (Get-LocalizedString -Key 'RunningAsAdmin') -ForegroundColor Green
 
-# Orchestrator: load modular updaters and execute
-# Add new modules to the list
-$moduleFiles = @(
-    'Update-Chocolatey.ps1',
-    'Update-Winget.ps1',
-    'Update-WindowsUpdate.ps1',
-    'Update-PowerShellModules.ps1',
-    'Update-Python.ps1',
-    'Update-Docker.ps1',
-    'Update-Scoop.ps1',
-    'Update-Npm.ps1',
-    'Update-Vcpkg.ps1',
-    'Update-Composer.ps1',
-    'Update-WSL.ps1',
-    'Update-Conda.ps1',
-    'Update-KubeHelm.ps1',
-    'Update-CloudCLI.ps1'
-)
-
-$invokeMap = @{
-    'Update-Chocolatey.ps1' = 'Invoke-UpdateChocolatey'
-    'Update-Winget.ps1' = 'Invoke-UpdateWinget'
-    'Update-WindowsUpdate.ps1' = 'Invoke-UpdateWindows'
-    'Update-PowerShellModules.ps1' = 'Invoke-UpdatePowerShellModules'
-    'Update-Python.ps1' = 'Invoke-UpdatePython'
-    'Update-Docker.ps1' = 'Invoke-UpdateDocker'
-    'Update-Scoop.ps1' = 'Invoke-UpdateScoop'
-    'Update-Npm.ps1' = 'Invoke-UpdateNpm'
-    'Update-Vcpkg.ps1' = 'Invoke-UpdateVcpkg'
-    'Update-Composer.ps1' = 'Invoke-UpdateComposer'
-    'Update-WSL.ps1' = 'Invoke-UpdateWSL'
-    'Update-Conda.ps1' = 'Invoke-UpdateConda'
-    'Update-KubeHelm.ps1' = 'Invoke-UpdateKubeHelm'
-    'Update-CloudCLI.ps1' = 'Invoke-UpdateCloudCLI'
-}
-
-$shortMap = @{
-    'Update-Chocolatey.ps1' = 'Chocolatey'
-    'Update-Winget.ps1' = 'Winget'
-    'Update-WindowsUpdate.ps1' = 'WindowsUpdate'
-    'Update-PowerShellModules.ps1' = 'PowerShellModules'
-    'Update-Python.ps1' = 'Python'
-    'Update-Docker.ps1' = 'Docker'
-    'Update-Scoop.ps1' = 'Scoop'
-    'Update-Npm.ps1' = 'Npm'
-    'Update-Vcpkg.ps1' = 'Vcpkg'
-    'Update-Composer.ps1' = 'Composer'
-    'Update-WSL.ps1' = 'WSL'
-    'Update-Conda.ps1' = 'Conda'
-    'Update-KubeHelm.ps1' = 'KubeHelm'
-    'Update-CloudCLI.ps1' = 'CloudCLI'
-}
-
+# ================================
+# Orchestrator: load and execute modules
+# ================================
+$moduleRegistry = Import-PowerShellDataFile -Path (Join-Path $ModuleDir 'ModuleRegistry.psd1')
 $results = @()
-foreach ($f in $moduleFiles) {
-    $path = Join-Path $ModuleDir $f
-    $shortName = $shortMap[$f]
 
-    if ($RunModules -and ($RunModules -ne $null) -and -not ($RunModules -contains $shortName)) {
-        Write-Host "Skipping $shortName because not in RunModules list" -ForegroundColor Yellow
+foreach ($module in $moduleRegistry) {
+    if ($RunModules -and ($RunModules -ne $null) -and -not ($RunModules -contains $module.Name)) {
+        Write-Host (Get-LocalizedString -Key 'Skipping' -FormatArgs $module.Name) -ForegroundColor Yellow
         continue
     }
-    if ($SkipModules -and ($SkipModules -contains $shortName)) {
-        Write-Host "Skipping $shortName as requested" -ForegroundColor Yellow
+    if ($SkipModules -and ($SkipModules -contains $module.Name)) {
+        Write-Host (Get-LocalizedString -Key 'SkippingAsRequested' -FormatArgs $module.Name) -ForegroundColor Yellow
         continue
     }
-
-    if (Test-Path $path) {
-        Write-Host "Checking: $shortName"
-        . $path
-        $invoke = $invokeMap[$f]
-        if (Get-Command $invoke -ErrorAction SilentlyContinue) {
-            try {
-                $res = & $invoke -WhatIf:$WhatIf -LogFile $LogFile
-                $results += $res
-                # Determine display status and color
-                $statusText = 'Failed'
-                $color = 'Red'
-                if ($res -and $res.Success) {
-                    $statusText = 'Success'
-                    $color = 'Green'
-                } else {
-                    $msg = if ($res -and $res.Message) { $res.Message } else { '' }
-                    $out = if ($res -and $res.Output) { $res.Output } else { '' }
-                    if ($msg -match '(?i)(not installed|not found|no supported updater|no updater|not present|no wsl distros|no wsl distros found|not managed|installed but not managed)' -or $out -match '(?i)(No installed package found|not found)') {
-                        $statusText = 'Not installed'
-                        $color = 'Yellow'
-                    } else {
-                        $statusText = 'Failed'
-                        $color = 'Red'
-                    }
-                }
-                Write-Host "Checked: $shortName - $statusText" -ForegroundColor $color
-            } catch {
-                $errObj = [PSCustomObject]@{ Module = $shortName; Success = $false; Message = 'Invocation failed'; Errors = @($_.Exception.Message); Duration = 0 }
-                $results += $errObj
-                Write-Host "Checked: $shortName - Invocation failed" -ForegroundColor Red
-            }
-        } else {
-            Write-Host "Function for $shortName not found in $f" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "Module file for $shortName not found: $path" -ForegroundColor Yellow
-    }
+    
+    $result = Invoke-UpdateModule -Module $module -ModuleDir $ModuleDir -WhatIf:$WhatIf -LogFile $LogFile
+    if ($result) { $results += $result }
 }
 
 # Write orchestrator summary to log
@@ -225,7 +144,7 @@ $summary = [PSCustomObject]@{
 }
 if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) { Write-LogJsonLine -Object $summary -LogFile $LogFile }
 
-Write-Host "Module execution results:"; $results | Format-Table -AutoSize
+Write-Host (Get-LocalizedString -Key 'ModuleExecutionResults'); $results | Format-Table -AutoSize
 
 # ================================
 # Event Log signal (user toast trigger)
@@ -239,13 +158,14 @@ if (-not [System.Diagnostics.EventLog]::SourceExists($Source)) {
 }
 
 $RebootRequired = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
-$EventMessage = if ($RebootRequired) { 'System updates completed. Reboot required.' } else { 'System updates completed. No reboot required.' }
+$EventMessage = if ($RebootRequired) { Get-LocalizedString -Key 'SystemUpdatesCompletedReboot' } else { Get-LocalizedString -Key 'SystemUpdatesCompleted' }
+$Title = Get-LocalizedString -Key 'SystemUpdate'
 
 if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
-    Invoke-Notify -Message $EventMessage -EventId $EventId -Title 'Systemopdatering' -LogFile $LogFile
+    Invoke-Notify -Message $EventMessage -EventId $EventId -Title $Title -LogFile $LogFile
 } else {
     Write-EventLog -LogName $LogName -Source $Source -EventId $EventId -EntryType Information -Message $EventMessage
-    if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $EventMessage }
+    if ($ToastAvailable) { New-BurntToastNotification -Text $Title, $EventMessage }
 }
 
 # ================================
@@ -269,7 +189,7 @@ $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 # Register scheduled task and finish
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force
 
-Write-Host "Scheduled task $TaskName created successfully." -ForegroundColor Green
+Write-Host (Get-LocalizedString -Key 'ScheduledTaskCreated' -FormatArgs $TaskName) -ForegroundColor Green
 
 $ScriptStopwatch.Stop()
 
@@ -281,13 +201,14 @@ $DurationText = '{0:hh\:mm\:ss}' -f $Elapsed
 # End notification
 # ================================
 $EndEventId = 1002
-$EndMessage = "Daglig opdatering færdig (tid: $DurationText)"
+$EndMessage = Get-LocalizedString -Key 'DailyUpdateFinished' -FormatArgs $DurationText
+$Title = Get-LocalizedString -Key 'SystemUpdate'
 
 if (Get-Command Invoke-Notify -ErrorAction SilentlyContinue) {
-    Invoke-Notify -Message $EndMessage -EventId $EndEventId -Title 'Systemopdatering' -LogFile $LogFile
+    Invoke-Notify -Message $EndMessage -EventId $EndEventId -Title $Title -LogFile $LogFile
 } else {
     Write-EventLog -LogName $LogName -Source $Source -EventId $EndEventId -EntryType Information -Message $EndMessage
-    if ($ToastAvailable) { New-BurntToastNotification -Text 'Systemopdatering', $EndMessage }
+    if ($ToastAvailable) { New-BurntToastNotification -Text $Title, $EndMessage }
 }
 
 # After collecting $results and logging summary, find failed PowerShell modules and trigger helper
@@ -307,13 +228,13 @@ if ($psModuleResult) {
 
             $helper = Join-Path $ModuleDir 'Update-Modules-Helper.ps1'
             if (Test-Path $helper) {
-                Write-Host "Launching elevated helper to update locked modules after exit: $helper"
+                Write-Host (Get-LocalizedString -Key 'LaunchingHelper' -FormatArgs $helper)
                 Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$helper,$tmp) -Verb RunAs
             } else {
-                Write-Host "Helper not found: $helper" -ForegroundColor Yellow
+                Write-Host (Get-LocalizedString -Key 'HelperNotFound' -FormatArgs $helper) -ForegroundColor Yellow
             }
         } catch {
-            Write-Host "Failed to launch helper: $_" -ForegroundColor Yellow
+            Write-Host (Get-LocalizedString -Key 'FailedToLaunchHelper' -FormatArgs $_) -ForegroundColor Yellow
         }
     }
 }
