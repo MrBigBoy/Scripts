@@ -3,7 +3,7 @@
 # ================================
 
 $Script:Strings = @{}
-$Script:LocalesPath = Join-Path $PSScriptRoot 'locales'
+$Script:LocalesPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'locales'
 
 function Load-LanguageFile {
     [CmdletBinding()]

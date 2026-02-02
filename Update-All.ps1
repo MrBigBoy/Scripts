@@ -50,10 +50,6 @@ try {
     $results = @()
 
     foreach ($module in $moduleRegistry.Modules) {
-        if ($module.PSObject.Properties.Match('Skip').Count -gt 0 -and $module.Skip) {
-            Write-Host (Get-LocalizedString -Key 'ModuleSkipped' -FormatArgs $module.Name) -ForegroundColor Yellow
-            continue
-        }
         $result = Invoke-UpdateModule -Module $module -ModuleDir $ModuleDir -WhatIf:$WhatIf -LogFile $LogFile
         if ($result) {
             if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string])) {

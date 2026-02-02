@@ -2,7 +2,7 @@
 @{
     Modules = @(
         @{ File = 'Update-Chocolatey.ps1'; Name = 'Chocolatey'; Function = 'Invoke-UpdateChocolatey' },
-        @{ File = 'Update-Winget.ps1'; Name = 'Winget'; Function = 'Invoke-UpdateWinget'; Skip = $true },
+        @{ File = 'Update-Winget.ps1'; Name = 'Winget'; Function = 'Invoke-UpdateWinget'; Skip = 'true' },
         @{ File = 'Update-WindowsUpdate.ps1'; Name = 'WindowsUpdate'; Function = 'Invoke-UpdateWindows' },
         @{ File = 'Update-PowerShellModules.ps1'; Name = 'PowerShellModules'; Function = 'Invoke-UpdatePowerShellModules' },
         @{ File = 'Update-Python.ps1'; Name = 'Python'; Function = 'Invoke-UpdatePython' },

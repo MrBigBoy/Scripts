@@ -43,16 +43,25 @@ function Invoke-UpdateModule {
         [string]$LogFile
     )
     
+    # Skip logic: do not load or run if Skip is true (bool or string)
+    if ($Module.ContainsKey('Skip')) {
+        $skipVal = ($Module['Skip'] -as [string]).Trim().ToLowerInvariant()
+        if ($skipVal -eq 'true' -or $skipVal -eq '1' -or $Module['Skip'] -eq $true) {
+            Write-Host (Get-LocalizedString -Key 'ModuleSkipped' -FormatArgs $Module['Name']) -ForegroundColor Yellow
+            return $null
+        }
+    }
+
     $path = Join-Path $ModuleDir $Module.File
-    
+
     if (-not (Test-Path $path)) {
         Write-Host (Get-LocalizedString -Key 'ModuleFileNotFound' -FormatArgs @($Module.Name, $path)) -ForegroundColor Yellow
         return $null
     }
-    
+
     Write-Host (Get-LocalizedString -Key 'Checking' -FormatArgs $Module.Name)
     . $path
-    
+
     if (-not (Get-Command $Module.Function -ErrorAction SilentlyContinue)) {
         Write-Host (Get-LocalizedString -Key 'FunctionNotFound' -FormatArgs @($Module.Name, $Module.File)) -ForegroundColor Yellow
         return $null
