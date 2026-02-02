@@ -51,4 +51,8 @@
     DefaultLogName = 'Applikation'
     DefaultLogSource = 'SystemOpdatering'
     ScriptFinishedDuration = 'Script færdig på {0}'
+    WhatIfDiskCleanup = 'WhatIf: Spring diskrydning over'
+    RunningDiskCleanup = 'Kører diskrydning...'
+    DiskCleanupCompleted = 'Diskrydning færdig. Frigjort {0} MB'
+    DiskCleanupFailed = 'Diskrydning fejlede: {0}'
 }

@@ -7,7 +7,6 @@ param(
 )
 
 try {
-    Write-Host "Starting System Update Script..."
     # ================================
     # Self-elevate to Administrator
     # ================================
@@ -37,6 +36,7 @@ try {
 
     # Set the console window title to a localized value
     $consoleTitle = Get-LocalizedString -Key 'SystemUpdate'
+    Write-Host (Get-LocalizedString -Key 'DailyUpdateStarted') -ForegroundColor Cyan
     try { $host.UI.RawUI.WindowTitle = $consoleTitle } catch {}
 
     # ================================

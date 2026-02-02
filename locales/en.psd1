@@ -51,4 +51,8 @@
     DefaultLogName = 'Application'
     DefaultLogSource = 'SystemUpdater'
     ScriptFinishedDuration = 'Script finished in {0}'
+    WhatIfDiskCleanup = 'WhatIf: Skipping Disk Cleanup'
+    RunningDiskCleanup = 'Running Disk Cleanup...'
+    DiskCleanupCompleted = 'Disk cleanup completed. Freed {0} MB'
+    DiskCleanupFailed = 'Disk cleanup failed: {0}'
 }

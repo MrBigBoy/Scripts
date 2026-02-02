@@ -14,6 +14,7 @@
         @{ File = 'Update-WSL.ps1'; Name = 'WSL'; Function = 'Invoke-UpdateWSL' },
         @{ File = 'Update-Conda.ps1'; Name = 'Conda'; Function = 'Invoke-UpdateConda' },
         @{ File = 'Update-KubeHelm.ps1'; Name = 'KubeHelm'; Function = 'Invoke-UpdateKubeHelm' },
-        @{ File = 'Update-CloudCLI.ps1'; Name = 'CloudCLI'; Function = 'Invoke-UpdateCloudCLI' }
+        @{ File = 'Update-CloudCLI.ps1'; Name = 'CloudCLI'; Function = 'Invoke-UpdateCloudCLI' },
+        @{ File = 'Update-DiskCleanup.ps1'; Name = 'DiskCleanup'; Function = 'Invoke-UpdateDiskCleanup'; Skip = 'true' }
     )
 }
