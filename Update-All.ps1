@@ -69,7 +69,7 @@ try {
     $summary = [PSCustomObject]@{ Timestamp = (Get-Date).ToString('o'); Results = $results }
     if ($LogFile -and (Get-Command Write-LogJsonLine -ErrorAction SilentlyContinue)) { Write-LogJsonLine -Object $summary -LogFile $LogFile }
     Write-Host (Get-LocalizedString -Key 'ModuleExecutionResults')
-    $results | Format-Table -AutoSize
+    $results | Select-Object Module, Success, Message, Duration, @{Name='Error';Expression={if ($_.Errors) { $_.Errors -join '; ' } else { '' }}} | Format-Table -AutoSize
 
     # ================================
     # Finalize
