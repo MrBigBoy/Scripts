@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Runs all updater modules in -WhatIf mode to verify signatures and loading.
 #>

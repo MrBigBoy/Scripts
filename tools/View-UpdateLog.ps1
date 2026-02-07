@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Displays the update log file contents
 #>
