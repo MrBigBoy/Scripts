@@ -1,5 +1,5 @@
 float SCAN_RANGE = 20.0;
-float SCAN_INTERVAL = 10.0;
+float SCAN_INTERVAL = 5.0;
 float WB_DELAY = 600.0;
 
 vector COLOR_RED = <1.0,0.0,0.0>;
