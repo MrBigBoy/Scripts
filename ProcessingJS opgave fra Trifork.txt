@@ -1,0 +1,36 @@
+// Create 100 squares 10 x 10 pixels with no overlap
+
+var squareSize_x = 10;
+var squareSize_y = 10;
+var count = 100;
+var canvas_x = 400;
+var canvas_y = 400;
+
+var squares = [];
+
+background(1);
+while (squares.length < count) {
+    var pos_x = random(0, canvas_x - squareSize_x);
+    var pos_y = random(0, canvas_y - squareSize_y);
+    
+    var overlap = false;
+    
+    for (var i = 0; i < squares.length; i++) {
+        var s = squares[i];
+        
+        if (abs(pos_x - s.x) < squareSize_x &&
+            abs(pos_y - s.y) < squareSize_y) {
+            overlap = true;
+            break;
+        }
+    }
+    
+    if (!overlap) {
+        squares.push({x: pos_x, y: pos_y});
+    }
+}
+
+for (var i = 0; i < squares.length; i++) {
+    image(getImage("avatars/leaf-green"), squares[i].x, squares[i].y, squareSize_x, squareSize_y);
+    //rect(squares[i].x, squares[i].y, squareSize_x, squareSize_y);
+}
