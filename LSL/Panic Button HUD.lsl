@@ -58,6 +58,9 @@ string normalizeFancy(string s)
     s = replaceAll(s,"ℓ","l");
     s = replaceAll(s,"乃","B");
     s = replaceAll(s,"ş","s");
+    s = replaceAll(s,"ل","J");
+    s = replaceAll(s,"ε","e");
+    s = replaceAll(s,"ɳ ","n");
 
     return s;
 }
@@ -100,7 +103,7 @@ string cleanName(string name)
         ++i;
     }
 
-    if(!hasLetter) return "";
+    if(!hasLetter) return "";    
     return result;
 }
 
@@ -114,7 +117,12 @@ string autoCapitalize(string name)
     string first = llToUpper(llGetSubString(name, 0, 0));
     string rest = llToLower(llGetSubString(name, 1, -1));
 
-    return first + rest;
+    string name = first+rest;
+    
+    if(name == "Aknightz") {
+        name = "AK";
+    }
+    return name;
 }
 
 // ----------------------------
