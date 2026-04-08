@@ -60,7 +60,11 @@ string normalizeFancy(string s)
     s = replaceAll(s,"ş","s");
     s = replaceAll(s,"ل","J");
     s = replaceAll(s,"ε","e");
-    s = replaceAll(s,"ɳ ","n");
+    s = replaceAll(s,"ɳ","n");
+    s = replaceAll(s,"Ḻ","L");
+    s = replaceAll(s,"Ѻ","O");
+    s = replaceAll(s,"Ḱ","K");
+    s = replaceAll(s,"Ї","I");
 
     return s;
 }
